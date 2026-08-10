@@ -233,12 +233,6 @@ export default function SiteHeaderNav() {
           </Link>
         </>
       )}
-      <Link
-        href="/admin"
-        className="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 hover:border-[var(--honda-red)] hover:text-[var(--honda-red)]"
-      >
-        Admin
-      </Link>
     </nav>
   );
 }
