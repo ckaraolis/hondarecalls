@@ -51,21 +51,33 @@ export async function sendVerificationEmail(input: {
     },
   });
 
-  await transporter.sendMail({
-    from:
-      process.env.SMTP_FROM?.trim() ||
-      `"Galatariotis Recall Check" <${process.env.SMTP_USER}>`,
-    to: input.to,
-    subject,
-    text,
-    html: `
+  try {
+    await transporter.sendMail({
+      from:
+        process.env.SMTP_FROM?.trim() ||
+        `"Galatariotis Recall Check" <${process.env.SMTP_USER}>`,
+      to: input.to,
+      subject,
+      text,
+      html: `
       <p>Hello ${input.firstName},</p>
       <p>Please confirm your email to activate your account:</p>
       <p><a href="${verifyUrl}">${verifyUrl}</a></p>
       <p>This link expires in 24 hours.</p>
       <p>Galatariotis Recall Check</p>
     `,
-  });
+    });
+  } catch (error) {
+    const detail =
+      error instanceof Error ? error.message : "Unknown SMTP error.";
+    console.error("[email] Failed to send verification email:", detail);
+    return {
+      sent: false,
+      previewUrl: verifyUrl,
+      message:
+        "Account created, but the verification email could not be sent. Use the link below to verify your email, or ask IT to enable SMTP AUTH for Microsoft 365.",
+    };
+  }
 
   return {
     sent: true,
