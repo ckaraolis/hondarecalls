@@ -39,6 +39,7 @@ type Recall = {
   recall_no: string;
   description: string;
   part_number: string;
+  done: number;
 };
 
 const emptyForm = {
@@ -81,6 +82,16 @@ export default function AccountPage() {
     telephone: "",
     city: "",
   });
+  const [appointmentRecall, setAppointmentRecall] = useState<Recall | null>(
+    null,
+  );
+  const [odometerKm, setOdometerKm] = useState("");
+  const [odometerTouched, setOdometerTouched] = useState(false);
+  const [appointmentBusy, setAppointmentBusy] = useState(false);
+  const [appointmentError, setAppointmentError] = useState<string | null>(null);
+  const [appointmentMessage, setAppointmentMessage] = useState<string | null>(
+    null,
+  );
 
   const loadVehicles = useCallback(async () => {
     const response = await fetch("/api/account/vehicles");
@@ -220,6 +231,60 @@ export default function AccountPage() {
       setProfileError("Could not update profile.");
     } finally {
       setProfileSaving(false);
+    }
+  }
+
+  function openAppointment(recall: Recall) {
+    setAppointmentRecall(recall);
+    setOdometerKm("");
+    setOdometerTouched(false);
+    setAppointmentError(null);
+    setAppointmentMessage(null);
+  }
+
+  function closeAppointment() {
+    setAppointmentRecall(null);
+    setOdometerKm("");
+    setOdometerTouched(false);
+    setAppointmentError(null);
+    setAppointmentBusy(false);
+  }
+
+  async function onSubmitAppointment(event: FormEvent) {
+    event.preventDefault();
+    if (!activeVehicle || !appointmentRecall) return;
+
+    setOdometerTouched(true);
+    const km = odometerKm.trim();
+    if (!km || !/^\d+$/.test(km)) {
+      setAppointmentError("Please enter the current odometer KM.");
+      return;
+    }
+
+    setAppointmentBusy(true);
+    setAppointmentError(null);
+    setAppointmentMessage(null);
+    try {
+      const response = await fetch("/api/account/appointment-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicle_id: activeVehicle.id,
+          recall_id: appointmentRecall.id,
+          odometer_km: km,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setAppointmentError(data.error || "Could not send appointment request.");
+        return;
+      }
+      setAppointmentMessage(data.message || "Appointment request sent.");
+      setTimeout(() => closeAppointment(), 1800);
+    } catch {
+      setAppointmentError("Could not send appointment request.");
+    } finally {
+      setAppointmentBusy(false);
     }
   }
 
@@ -607,31 +672,50 @@ export default function AccountPage() {
                     </p>
                   ) : (
                     <div className="mt-3">
-                      <p className="mb-3 text-sm font-semibold text-[var(--warn)]">
-                        {recalls.length} recall
-                        {recalls.length === 1 ? "" : "s"} available
-                      </p>
                       <div className="table-wrap overflow-hidden rounded-xl border border-[var(--line)]">
                         <table className="data">
                           <thead>
                             <tr>
                               <th>Recall No.</th>
-                              <th>Model</th>
-                              <th>Part Number</th>
                               <th>Description</th>
+                              <th>Status</th>
+                              <th></th>
                             </tr>
                           </thead>
                           <tbody>
-                            {recalls.map((row) => (
-                              <tr key={row.id}>
-                                <td className="font-semibold">
-                                  {row.recall_no || "—"}
-                                </td>
-                                <td>{row.model || "—"}</td>
-                                <td>{row.part_number || "—"}</td>
-                                <td>{row.description || "—"}</td>
-                              </tr>
-                            ))}
+                            {recalls.map((row) => {
+                              const status = row.done ? "Completed" : "Pending";
+                              return (
+                                <tr key={row.id}>
+                                  <td className="font-semibold">
+                                    {row.recall_no || "—"}
+                                  </td>
+                                  <td>{row.description || "—"}</td>
+                                  <td>
+                                    <span
+                                      className={`font-semibold ${
+                                        row.done
+                                          ? "text-[var(--ok)]"
+                                          : "text-[var(--warn)]"
+                                      }`}
+                                    >
+                                      {status}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    {!row.done && (
+                                      <button
+                                        type="button"
+                                        className="btn btn-primary px-3 py-2 text-sm"
+                                        onClick={() => openAppointment(row)}
+                                      >
+                                        Request for Appointment
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -842,6 +926,151 @@ export default function AccountPage() {
           Log out
         </button>
       </div>
+
+      {appointmentRecall && activeVehicle && user && (
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/45 p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="appointment-request-title"
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !appointmentBusy) {
+              closeAppointment();
+            }
+          }}
+        >
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[var(--line)] bg-white p-5 shadow-xl sm:p-6">
+            <div className="flex items-start justify-between gap-3">
+              <h2
+                id="appointment-request-title"
+                className="text-xl font-semibold tracking-tight"
+              >
+                Appointment Request
+              </h2>
+              <button
+                type="button"
+                className="btn btn-secondary px-3 py-2 text-sm"
+                onClick={closeAppointment}
+                disabled={appointmentBusy}
+              >
+                Close
+              </button>
+            </div>
+
+            <form onSubmit={onSubmitAppointment} className="mt-5 space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold">
+                    Email
+                  </label>
+                  <input className="input" value={user.email} readOnly />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-semibold">
+                    Name
+                  </label>
+                  <input
+                    className="input"
+                    value={`${user.first_name} ${user.surname}`.trim()}
+                    readOnly
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-semibold">
+                    Telephone
+                  </label>
+                  <input className="input" value={user.telephone} readOnly />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-semibold">
+                    City
+                  </label>
+                  <input className="input" value={user.city} readOnly />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-semibold">
+                    Car Number
+                  </label>
+                  <input
+                    className="input"
+                    value={activeVehicle.reg_no}
+                    readOnly
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-semibold">
+                    Recall Number
+                  </label>
+                  <input
+                    className="input"
+                    value={appointmentRecall.recall_no || "—"}
+                    readOnly
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold">
+                  Description
+                </label>
+                <textarea
+                  className="input min-h-[5rem] resize-y"
+                  value={appointmentRecall.description || "—"}
+                  readOnly
+                />
+              </div>
+
+              <div>
+                <label
+                  className="mb-1 block text-sm font-semibold"
+                  htmlFor="odometer_km"
+                >
+                  Current Odometer KM{" "}
+                  <span className="text-red-600" aria-hidden="true">
+                    *
+                  </span>
+                </label>
+                <input
+                  id="odometer_km"
+                  className={`input ${
+                    odometerTouched && !odometerKm.trim()
+                      ? "border-red-500 focus:border-red-500"
+                      : ""
+                  }`}
+                  inputMode="numeric"
+                  value={odometerKm}
+                  onChange={(e) =>
+                    setOdometerKm(e.target.value.replace(/[^\d]/g, ""))
+                  }
+                  onBlur={() => setOdometerTouched(true)}
+                  required
+                  aria-required="true"
+                />
+                {odometerTouched && !odometerKm.trim() && (
+                  <p className="mt-1 text-sm text-red-600">
+                    Odometer KM is required.
+                  </p>
+                )}
+              </div>
+
+              {appointmentError && (
+                <p className="text-sm text-red-700">{appointmentError}</p>
+              )}
+              {appointmentMessage && (
+                <p className="text-sm text-[var(--ok)]">{appointmentMessage}</p>
+              )}
+
+              <button
+                type="submit"
+                className="btn btn-primary w-full sm:w-auto"
+                disabled={appointmentBusy}
+              >
+                {appointmentBusy ? "Sending…" : "Send request"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

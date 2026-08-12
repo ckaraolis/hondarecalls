@@ -86,6 +86,8 @@ ALTAVIE_SMS_SENDER=YourSenderId
 ALTAVIE_SMS_DRY_RUN=false
 ```
 
+Appointment request emails (from customer account) go to `APPOINTMENT_TO`, or fall back to `SMTP_FROM` / `SMTP_USER`.
+
 ## Browser push
 
 ```bash

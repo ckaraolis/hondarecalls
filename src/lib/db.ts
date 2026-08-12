@@ -166,11 +166,15 @@ export async function searchRecalls(query: string): Promise<PublicRecall[]> {
   }));
 }
 
-/** Open (not Done) recalls matching a vehicle's reg and/or VIN. */
-export async function searchOpenRecallsForVehicle(input: {
+/** All recalls (open + completed) matching a vehicle's reg and/or VIN. */
+export type VehicleRecall = PublicRecall & {
+  done: number;
+};
+
+export async function searchRecallsForVehicle(input: {
   reg_no: string;
   vin_number?: string;
-}): Promise<PublicRecall[]> {
+}): Promise<VehicleRecall[]> {
   const reg = normalize(input.reg_no);
   const vin = normalize(input.vin_number || "");
   if (!reg && !vin) return [];
@@ -178,8 +182,9 @@ export async function searchOpenRecallsForVehicle(input: {
   const supabase = getSupabase();
   let query = supabase
     .from("recalls")
-    .select("id, reg_no, vin_number, model, recall_no, description, part_number")
-    .eq("done", 0)
+    .select(
+      "id, reg_no, vin_number, model, recall_no, description, part_number, done",
+    )
     .order("recall_no", { ascending: true });
 
   if (reg && vin) {
@@ -201,7 +206,17 @@ export async function searchOpenRecallsForVehicle(input: {
     recall_no: String(row.recall_no ?? ""),
     description: String(row.description ?? ""),
     part_number: String(row.part_number ?? ""),
+    done: Number(row.done) ? 1 : 0,
   }));
+}
+
+/** Open (not Done) recalls matching a vehicle's reg and/or VIN. */
+export async function searchOpenRecallsForVehicle(input: {
+  reg_no: string;
+  vin_number?: string;
+}): Promise<PublicRecall[]> {
+  const rows = await searchRecallsForVehicle(input);
+  return rows.filter((row) => !row.done).map(({ done: _done, ...row }) => row);
 }
 
 /**

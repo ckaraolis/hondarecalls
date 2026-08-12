@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchOpenRecallsForVehicle } from "@/lib/db";
+import { searchRecallsForVehicle } from "@/lib/db";
 import { getCurrentUser } from "@/lib/user-auth";
 import { deleteVehicleForUser, getVehicleForUser } from "@/lib/vehicles";
 
@@ -25,7 +25,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "Vehicle not found." }, { status: 404 });
   }
 
-  const recalls = await searchOpenRecallsForVehicle({
+  const recalls = await searchRecallsForVehicle({
     reg_no: vehicle.reg_no,
     vin_number: vehicle.vin_number,
   });

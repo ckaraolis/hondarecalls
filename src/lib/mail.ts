@@ -86,3 +86,95 @@ export async function sendVerificationEmail(input: {
       "Account created. Please check your email and click the validation link before logging in.",
   };
 }
+
+function appointmentInbox() {
+  const dedicated = process.env.APPOINTMENT_TO?.trim();
+  if (dedicated) return dedicated;
+
+  const from = process.env.SMTP_FROM?.trim() || "";
+  const match = from.match(/<([^>]+)>/);
+  if (match?.[1]) return match[1].trim();
+  if (from.includes("@")) return from;
+
+  return process.env.SMTP_USER?.trim() || "";
+}
+
+export async function sendAppointmentRequestEmail(input: {
+  customerEmail: string;
+  customerName: string;
+  telephone: string;
+  city: string;
+  regNo: string;
+  recallNo: string;
+  description: string;
+  odometerKm: string;
+}) {
+  const to = appointmentInbox();
+  if (!to) {
+    throw new Error(
+      "Appointment inbox is not configured. Set APPOINTMENT_TO or SMTP_FROM / SMTP_USER.",
+    );
+  }
+
+  const subject = `Appointment request — ${input.regNo} / ${input.recallNo || "Recall"}`;
+  const text =
+    `Appointment Request\n\n` +
+    `Email: ${input.customerEmail}\n` +
+    `Name: ${input.customerName}\n` +
+    `Telephone: ${input.telephone}\n` +
+    `City: ${input.city}\n` +
+    `Car Number: ${input.regNo}\n` +
+    `Recall Number: ${input.recallNo || "—"}\n` +
+    `Description: ${input.description || "—"}\n` +
+    `Odometer (KM): ${input.odometerKm}\n`;
+
+  const html = `
+    <h2>Appointment Request</h2>
+    <table cellpadding="6" style="border-collapse:collapse">
+      <tr><td><strong>Email</strong></td><td>${input.customerEmail}</td></tr>
+      <tr><td><strong>Name</strong></td><td>${input.customerName}</td></tr>
+      <tr><td><strong>Telephone</strong></td><td>${input.telephone}</td></tr>
+      <tr><td><strong>City</strong></td><td>${input.city}</td></tr>
+      <tr><td><strong>Car Number</strong></td><td>${input.regNo}</td></tr>
+      <tr><td><strong>Recall Number</strong></td><td>${input.recallNo || "—"}</td></tr>
+      <tr><td><strong>Description</strong></td><td>${input.description || "—"}</td></tr>
+      <tr><td><strong>Odometer (KM)</strong></td><td>${input.odometerKm}</td></tr>
+    </table>
+  `;
+
+  if (!isSmtpConfigured()) {
+    console.info("[email:dev] Appointment request to", to, text);
+    return {
+      sent: false,
+      message:
+        "SMTP is not configured. Appointment details were logged on the server for development.",
+    };
+  }
+
+  const port = Number(process.env.SMTP_PORT || 587);
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port,
+    secure: process.env.SMTP_SECURE === "true" || port === 465,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+
+  await transporter.sendMail({
+    from:
+      process.env.SMTP_FROM?.trim() ||
+      `"Galatariotis Recall Check" <${process.env.SMTP_USER}>`,
+    to,
+    replyTo: input.customerEmail,
+    subject,
+    text,
+    html,
+  });
+
+  return {
+    sent: true,
+    message: "Appointment request sent. We will contact you soon.",
+  };
+}
