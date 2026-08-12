@@ -22,11 +22,16 @@ function readRecallBody(body: Record<string, unknown> | null) {
 
   const reg_no = str("reg_no");
   const vin_number = str("vin_number");
+  const model = str("model");
   const recall_no = str("recall_no");
   const description = str("description");
+  const part_number = str("part_number");
   const surname = str("surname");
   const first_name = str("first_name");
   const telephone = str("telephone");
+  const city = str("city");
+  const registration_date = str("registration_date");
+  const engine_number = str("engine_number");
 
   const parseFlag = (key: string) => {
     const value = body[key];
@@ -55,11 +60,16 @@ function readRecallBody(body: Record<string, unknown> | null) {
     data: {
       reg_no,
       vin_number,
+      model,
       recall_no,
       description,
+      part_number,
       surname,
       first_name,
       telephone,
+      city,
+      registration_date,
+      engine_number,
       done,
       sms_sent,
     },

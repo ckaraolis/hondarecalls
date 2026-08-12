@@ -10,6 +10,7 @@ import {
   pushSupported,
   registerPushServiceWorker,
 } from "@/lib/push-client";
+import { HONDA_VEHICLE_MODELS } from "@/lib/honda-models";
 
 type User = {
   id: number;
@@ -34,8 +35,10 @@ type Recall = {
   id: number;
   reg_no: string;
   vin_number: string;
+  model: string;
   recall_no: string;
   description: string;
+  part_number: string;
 };
 
 const emptyForm = {
@@ -67,6 +70,17 @@ export default function AccountPage() {
   const [canUsePush, setCanUsePush] = useState(false);
   const [pushStatus, setPushStatus] = useState<string | null>(null);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileForm, setProfileForm] = useState({
+    first_name: "",
+    surname: "",
+    telephone: "",
+    city: "",
+  });
 
   const loadVehicles = useCallback(async () => {
     const response = await fetch("/api/account/vehicles");
@@ -106,6 +120,12 @@ export default function AccountPage() {
         }
         const data = await response.json();
         setUser(data.user);
+        setProfileForm({
+          first_name: data.user.first_name ?? "",
+          surname: data.user.surname ?? "",
+          telephone: data.user.telephone ?? "",
+          city: data.user.city ?? "",
+        });
         await loadVehicles();
         setCanUsePush(pushSupported());
         if (pushSupported()) {
@@ -149,6 +169,57 @@ export default function AccountPage() {
       setPushError("Could not update notification settings.");
     } finally {
       setPushBusy(false);
+    }
+  }
+
+  function startEditProfile() {
+    if (!user) return;
+    setProfileForm({
+      first_name: user.first_name,
+      surname: user.surname,
+      telephone: user.telephone,
+      city: user.city,
+    });
+    setEditingProfile(true);
+    setProfileError(null);
+    setProfileMessage(null);
+  }
+
+  function cancelEditProfile() {
+    if (!user) return;
+    setProfileForm({
+      first_name: user.first_name,
+      surname: user.surname,
+      telephone: user.telephone,
+      city: user.city,
+    });
+    setEditingProfile(false);
+    setProfileError(null);
+  }
+
+  async function onSaveProfile(event: FormEvent) {
+    event.preventDefault();
+    setProfileSaving(true);
+    setProfileError(null);
+    setProfileMessage(null);
+    try {
+      const response = await fetch("/api/account/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profileForm),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setProfileError(data.error || "Could not update profile.");
+        return;
+      }
+      setUser(data.user);
+      setEditingProfile(false);
+      setProfileMessage("Profile updated.");
+    } catch {
+      setProfileError("Could not update profile.");
+    } finally {
+      setProfileSaving(false);
     }
   }
 
@@ -242,202 +313,243 @@ export default function AccountPage() {
         <p className="brand-mark text-xs font-bold text-[var(--honda-red)]">
           Account
         </p>
-        <h1 className="mt-2 font-[family-name:var(--font-display)] text-5xl tracking-wide">
-          Welcome, {user.first_name}
-        </h1>
+        <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+          <h1 className="font-[family-name:var(--font-display)] text-5xl tracking-wide">
+            Welcome, {user.first_name}
+          </h1>
+          <button
+            type="button"
+            className="text-sm font-semibold text-[var(--honda-red)] hover:underline"
+            onClick={() => {
+              setShowProfile((open) => !open);
+              if (showProfile) {
+                setEditingProfile(false);
+                setProfileError(null);
+                setProfileMessage(null);
+              }
+            }}
+            aria-expanded={showProfile}
+          >
+            {showProfile ? "Hide profile details" : "View profile details"}
+          </button>
+        </div>
         <p className="mt-3 max-w-2xl text-[var(--muted)]">
-          Add your vehicles here. When a new recall is uploaded for one of your
-          registration numbers, you can be notified directly.
-        </p>
-      </div>
-
-      <div className="panel space-y-3 rounded-2xl p-6 text-sm">
-        <h2 className="text-lg font-semibold">Your profile</h2>
-        <p>
-          <span className="text-[var(--muted)]">Email:</span>{" "}
-          <span className="font-semibold">{user.email}</span>
-        </p>
-        <p>
-          <span className="text-[var(--muted)]">Name:</span>{" "}
-          <span className="font-semibold">
-            {user.first_name} {user.surname}
-          </span>
-        </p>
-        <p>
-          <span className="text-[var(--muted)]">Telephone:</span>{" "}
-          <span className="font-semibold">{user.telephone}</span>
-        </p>
-        <p>
-          <span className="text-[var(--muted)]">City:</span>{" "}
-          <span className="font-semibold">{user.city}</span>
+          Your vehicles and open recalls are listed below. You can add another
+          car when you need to.
         </p>
 
-        {canUsePush && (
-          <div className="mt-4 rounded-xl border border-[var(--line)] bg-[#f7f9fc] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="font-semibold text-[var(--ink)]">
-                  Browser notifications
+        {showProfile && (
+          <div className="mt-4 rounded-xl border border-[var(--line)] bg-white p-4 text-sm sm:p-5">
+            {editingProfile ? (
+              <form onSubmit={onSaveProfile} className="space-y-4">
+                <div>
+                  <label className="mb-1 block font-semibold" htmlFor="profile_email">
+                    Email
+                  </label>
+                  <input
+                    id="profile_email"
+                    className="input bg-[#f0f3f7]"
+                    value={user.email}
+                    disabled
+                  />
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    Email cannot be changed.
+                  </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      className="mb-1 block font-semibold"
+                      htmlFor="profile_first_name"
+                    >
+                      Name
+                    </label>
+                    <input
+                      id="profile_first_name"
+                      className="input"
+                      value={profileForm.first_name}
+                      onChange={(e) =>
+                        setProfileForm((current) => ({
+                          ...current,
+                          first_name: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label
+                      className="mb-1 block font-semibold"
+                      htmlFor="profile_surname"
+                    >
+                      Surname
+                    </label>
+                    <input
+                      id="profile_surname"
+                      className="input"
+                      value={profileForm.surname}
+                      onChange={(e) =>
+                        setProfileForm((current) => ({
+                          ...current,
+                          surname: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label
+                      className="mb-1 block font-semibold"
+                      htmlFor="profile_telephone"
+                    >
+                      Telephone
+                    </label>
+                    <input
+                      id="profile_telephone"
+                      className="input"
+                      value={profileForm.telephone}
+                      onChange={(e) =>
+                        setProfileForm((current) => ({
+                          ...current,
+                          telephone: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label
+                      className="mb-1 block font-semibold"
+                      htmlFor="profile_city"
+                    >
+                      City
+                    </label>
+                    <input
+                      id="profile_city"
+                      className="input"
+                      value={profileForm.city}
+                      onChange={(e) =>
+                        setProfileForm((current) => ({
+                          ...current,
+                          city: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <button className="btn btn-primary" disabled={profileSaving}>
+                    {profileSaving ? "Saving…" : "Save profile"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={profileSaving}
+                    onClick={cancelEditProfile}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="space-y-2">
+                <p>
+                  <span className="text-[var(--muted)]">Email:</span>{" "}
+                  <span className="font-semibold">{user.email}</span>
                 </p>
-                <p className="mt-1 text-[var(--muted)]">
-                  Get a toast on this device when a new recall matches your
-                  vehicle. In-app Alerts in the header still work even if this
-                  switch stays Off.
+                <p>
+                  <span className="text-[var(--muted)]">Name:</span>{" "}
+                  <span className="font-semibold">
+                    {user.first_name} {user.surname}
+                  </span>
                 </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span
-                  className={`text-sm font-bold ${
-                    pushEnabled ? "text-[var(--ok)]" : "text-[var(--muted)]"
-                  }`}
-                >
-                  {pushBusy ? "…" : pushEnabled ? "On" : "Off"}
-                </span>
+                <p>
+                  <span className="text-[var(--muted)]">Telephone:</span>{" "}
+                  <span className="font-semibold">{user.telephone}</span>
+                </p>
+                <p>
+                  <span className="text-[var(--muted)]">City:</span>{" "}
+                  <span className="font-semibold">{user.city}</span>
+                </p>
                 <button
                   type="button"
-                  role="switch"
-                  aria-checked={pushEnabled}
-                  aria-label="Browser notifications"
-                  disabled={pushBusy}
-                  onClick={() => onTogglePush(!pushEnabled)}
-                  className={`relative h-8 w-14 shrink-0 rounded-full border transition-colors ${
-                    pushEnabled
-                      ? "border-[var(--honda-red)] bg-[var(--honda-red)]"
-                      : "border-[var(--line)] bg-[#d7dde8]"
-                  } ${pushBusy ? "opacity-60" : ""}`}
+                  className="btn btn-secondary mt-2 px-4 py-2 text-sm"
+                  onClick={startEditProfile}
                 >
-                  <span
-                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
-                      pushEnabled ? "left-7" : "left-0.5"
-                    }`}
-                  />
+                  Edit profile
                 </button>
               </div>
+            )}
+
+            {profileMessage && (
+              <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[var(--ok)]">
+                {profileMessage}
+              </p>
+            )}
+            {profileError && (
+              <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+                {profileError}
+              </p>
+            )}
+          </div>
+        )}
+
+        {canUsePush && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--line)] bg-[#f7f9fc] px-3 py-2 text-sm">
+            <div className="min-w-0">
+              <p className="font-semibold text-[var(--ink)]">
+                Browser notifications
+              </p>
+              {(pushStatus || pushError) && (
+                <p
+                  className={`mt-0.5 text-xs ${
+                    pushError ? "text-red-700" : "text-[var(--muted)]"
+                  }`}
+                >
+                  {pushError || pushStatus}
+                </p>
+              )}
             </div>
-            {pushStatus && (
-              <p className="mt-3 text-sm text-[var(--ok)]">{pushStatus}</p>
-            )}
-            {pushError && (
-              <p className="mt-3 text-sm text-red-700">{pushError}</p>
-            )}
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-xs font-bold ${
+                  pushEnabled ? "text-[var(--ok)]" : "text-[var(--muted)]"
+                }`}
+              >
+                {pushBusy ? "…" : pushEnabled ? "On" : "Off"}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={pushEnabled}
+                aria-label="Browser notifications"
+                disabled={pushBusy}
+                onClick={() => onTogglePush(!pushEnabled)}
+                className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors ${
+                  pushEnabled
+                    ? "border-[var(--honda-red)] bg-[var(--honda-red)]"
+                    : "border-[var(--line)] bg-[#d7dde8]"
+                } ${pushBusy ? "opacity-60" : ""}`}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                    pushEnabled ? "left-6" : "left-0.5"
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         )}
       </div>
 
       <section className="panel rounded-2xl p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold">My vehicles</h2>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              Each vehicle appears as a tab with its registration number.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-primary px-4 py-2 text-sm"
-            onClick={() => {
-              setShowForm((open) => !open);
-              setError(null);
-              setMessage(null);
-            }}
-          >
-            {showForm ? "Cancel" : "Add a Vehicle"}
-          </button>
+        <div>
+          <h2 className="text-xl font-semibold">My vehicles</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Select a registration number to see recalls for that vehicle.
+          </p>
         </div>
-
-        {showForm && (
-          <form
-            onSubmit={onAddVehicle}
-            className="mt-5 space-y-4 rounded-xl border border-[var(--line)] bg-[#f7f9fc] p-4 sm:p-5"
-          >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-semibold" htmlFor="reg_no">
-                  Reg. Number
-                </label>
-                <input
-                  id="reg_no"
-                  className="input"
-                  value={form.reg_no}
-                  onChange={(e) => updateForm("reg_no", e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-semibold" htmlFor="vin_number">
-                  VIN <span className="font-normal text-[var(--muted)]">(optional)</span>
-                </label>
-                <input
-                  id="vin_number"
-                  className="input"
-                  value={form.vin_number}
-                  onChange={(e) => updateForm("vin_number", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-semibold" htmlFor="vehicle_type">
-                  Type
-                </label>
-                <select
-                  id="vehicle_type"
-                  className="input"
-                  value={form.vehicle_type}
-                  onChange={(e) =>
-                    updateForm(
-                      "vehicle_type",
-                      e.target.value === "Motorbike" ? "Motorbike" : "Car",
-                    )
-                  }
-                >
-                  <option value="Car">Car</option>
-                  <option value="Motorbike">Motorbike</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-semibold" htmlFor="model">
-                  Model
-                </label>
-                <input
-                  id="model"
-                  className="input"
-                  value={form.model}
-                  onChange={(e) => updateForm("model", e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-semibold" htmlFor="year">
-                  Year
-                </label>
-                <input
-                  id="year"
-                  className="input"
-                  inputMode="numeric"
-                  maxLength={4}
-                  placeholder="2020"
-                  value={form.year}
-                  onChange={(e) => updateForm("year", e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-semibold" htmlFor="color">
-                  Color
-                </label>
-                <input
-                  id="color"
-                  className="input"
-                  value={form.color}
-                  onChange={(e) => updateForm("color", e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-            <button className="btn btn-primary" disabled={saving}>
-              {saving ? "Saving…" : "Save vehicle"}
-            </button>
-          </form>
-        )}
 
         {message && (
           <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-[var(--ok)]">
@@ -452,8 +564,8 @@ export default function AccountPage() {
 
         {vehicles.length === 0 ? (
           <p className="mt-5 text-sm text-[var(--muted)]">
-            No vehicles yet. Click <span className="font-semibold">Add a Vehicle</span>{" "}
-            to register your first one.
+            No vehicles yet. Use <span className="font-semibold">Add a Vehicle</span>{" "}
+            below to register your first one.
           </p>
         ) : (
           <>
@@ -504,6 +616,8 @@ export default function AccountPage() {
                           <thead>
                             <tr>
                               <th>Recall No.</th>
+                              <th>Model</th>
+                              <th>Part Number</th>
                               <th>Description</th>
                             </tr>
                           </thead>
@@ -513,6 +627,8 @@ export default function AccountPage() {
                                 <td className="font-semibold">
                                   {row.recall_no || "—"}
                                 </td>
+                                <td>{row.model || "—"}</td>
+                                <td>{row.part_number || "—"}</td>
                                 <td>{row.description || "—"}</td>
                               </tr>
                             ))}
@@ -590,6 +706,131 @@ export default function AccountPage() {
               </div>
             )}
           </>
+        )}
+      </section>
+
+      <section className="panel rounded-2xl p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Add a Vehicle</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              Register another car or motorbike on your account.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary px-4 py-2 text-sm"
+            onClick={() => {
+              setShowForm((open) => !open);
+              setError(null);
+              setMessage(null);
+            }}
+          >
+            {showForm ? "Cancel" : "Add a Vehicle"}
+          </button>
+        </div>
+
+        {showForm && (
+          <form
+            onSubmit={onAddVehicle}
+            className="mt-5 space-y-4 rounded-xl border border-[var(--line)] bg-[#f7f9fc] p-4 sm:p-5"
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-semibold" htmlFor="reg_no">
+                  Reg. Number
+                </label>
+                <input
+                  id="reg_no"
+                  className="input"
+                  value={form.reg_no}
+                  onChange={(e) => updateForm("reg_no", e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold" htmlFor="vin_number">
+                  VIN <span className="font-normal text-[var(--muted)]">(optional)</span>
+                </label>
+                <input
+                  id="vin_number"
+                  className="input"
+                  value={form.vin_number}
+                  onChange={(e) => updateForm("vin_number", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold" htmlFor="vehicle_type">
+                  Type
+                </label>
+                <select
+                  id="vehicle_type"
+                  className="input"
+                  value={form.vehicle_type}
+                  onChange={(e) =>
+                    updateForm(
+                      "vehicle_type",
+                      e.target.value === "Motorbike" ? "Motorbike" : "Car",
+                    )
+                  }
+                >
+                  <option value="Car">Car</option>
+                  <option value="Motorbike">Motorbike</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold" htmlFor="model">
+                  Model
+                </label>
+                <select
+                  id="model"
+                  className="input"
+                  value={form.model}
+                  onChange={(e) => updateForm("model", e.target.value)}
+                  required
+                >
+                  <option value="" disabled>
+                    Select model
+                  </option>
+                  {HONDA_VEHICLE_MODELS.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold" htmlFor="year">
+                  Year
+                </label>
+                <input
+                  id="year"
+                  className="input"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder="2020"
+                  value={form.year}
+                  onChange={(e) => updateForm("year", e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold" htmlFor="color">
+                  Color
+                </label>
+                <input
+                  id="color"
+                  className="input"
+                  value={form.color}
+                  onChange={(e) => updateForm("color", e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            <button className="btn btn-primary" disabled={saving}>
+              {saving ? "Saving…" : "Save vehicle"}
+            </button>
+          </form>
         )}
       </section>
 

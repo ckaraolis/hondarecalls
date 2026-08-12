@@ -10,13 +10,18 @@ create table if not exists public.recalls (
   vin_number text not null default '',
   reg_no_norm text not null default '',
   vin_number_norm text not null default '',
+  model text not null default '',
   recall_no text not null default '',
   description text not null default '',
+  part_number text not null default '',
   surname text not null default '',
   first_name text not null default '',
   telephone text not null default '',
+  city text not null default '',
   done integer not null default 0,
-  sms_sent integer not null default 0
+  sms_sent integer not null default 0,
+  registration_date text not null default '',
+  engine_number text not null default ''
 );
 
 create index if not exists idx_recalls_reg on public.recalls (reg_no);

@@ -1,0 +1,53 @@
+/** Honda models available when a user adds a vehicle. */
+export const HONDA_VEHICLE_MODELS = [
+  "Accord",
+  "Airwave",
+  "Aria",
+  "Ascot",
+  "City",
+  "Civic",
+  "Concerto",
+  "CR-V",
+  "CR-Z",
+  "Crossroad",
+  "Domani",
+  "Edix",
+  "Elysion",
+  "Fit",
+  "Fit Aria",
+  "Fit Shuttle",
+  "FR-V",
+  "Freed",
+  "Grace",
+  "HR-V",
+  "Insight",
+  "Inspire",
+  "Integra",
+  "Jazz",
+  "Legend",
+  "Logo",
+  "Mobilio",
+  "NSX",
+  "Odyssey",
+  "Partner",
+  "Pilot",
+  "Prelude",
+  "Rafaga",
+  "S2000",
+  "S800",
+  "Shuttle",
+  "Spike",
+  "Stepwgn",
+  "Stream",
+  "Torneo",
+  "Vezel",
+  "WR-V",
+  "ZR-V",
+  "Other",
+] as const;
+
+export type HondaVehicleModel = (typeof HONDA_VEHICLE_MODELS)[number];
+
+export function isHondaVehicleModel(value: string): value is HondaVehicleModel {
+  return (HONDA_VEHICLE_MODELS as readonly string[]).includes(value);
+}

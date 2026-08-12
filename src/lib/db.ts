@@ -4,13 +4,18 @@ export type Recall = {
   id: number;
   reg_no: string;
   vin_number: string;
+  model: string;
   recall_no: string;
   description: string;
+  part_number: string;
   surname: string;
   first_name: string;
   telephone: string;
+  city: string;
   done: number;
   sms_sent: number;
+  registration_date: string;
+  engine_number: string;
 };
 
 /** Public-safe recall fields (no owner/phone). */
@@ -18,8 +23,10 @@ export type PublicRecall = {
   id: number;
   reg_no: string;
   vin_number: string;
+  model: string;
   recall_no: string;
   description: string;
+  part_number: string;
 };
 
 export type UpsertResult = {
@@ -36,7 +43,7 @@ export type RecallGroup = {
 };
 
 const RECALL_COLUMNS =
-  "id, reg_no, vin_number, recall_no, description, surname, first_name, telephone, done, sms_sent";
+  "id, reg_no, vin_number, model, recall_no, description, part_number, surname, first_name, telephone, city, done, sms_sent, registration_date, engine_number";
 
 export const SMS_MAX_LENGTH = 160;
 
@@ -56,13 +63,18 @@ function mapRecall(row: Record<string, unknown>): Recall {
     id: Number(row.id),
     reg_no: String(row.reg_no ?? ""),
     vin_number: String(row.vin_number ?? ""),
+    model: String(row.model ?? ""),
     recall_no: String(row.recall_no ?? ""),
     description: String(row.description ?? ""),
+    part_number: String(row.part_number ?? ""),
     surname: String(row.surname ?? ""),
     first_name: String(row.first_name ?? ""),
     telephone: String(row.telephone ?? ""),
+    city: String(row.city ?? ""),
     done: asNumber(row.done),
     sms_sent: asNumber(row.sms_sent),
+    registration_date: String(row.registration_date ?? ""),
+    engine_number: String(row.engine_number ?? ""),
   };
 }
 
@@ -91,8 +103,10 @@ export function toPublicRecall(row: Recall): PublicRecall {
     id: row.id,
     reg_no: row.reg_no,
     vin_number: row.vin_number,
+    model: row.model,
     recall_no: row.recall_no,
     description: row.description,
+    part_number: row.part_number,
   };
 }
 
@@ -135,7 +149,7 @@ export async function searchRecalls(query: string): Promise<PublicRecall[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("recalls")
-    .select("id, reg_no, vin_number, recall_no, description")
+    .select("id, reg_no, vin_number, model, recall_no, description, part_number")
     .or(`reg_no_norm.eq."${q}",vin_number_norm.eq."${q}"`)
     .order("recall_no", { ascending: true });
 
@@ -145,8 +159,10 @@ export async function searchRecalls(query: string): Promise<PublicRecall[]> {
     id: Number(row.id),
     reg_no: String(row.reg_no ?? ""),
     vin_number: String(row.vin_number ?? ""),
+    model: String(row.model ?? ""),
     recall_no: String(row.recall_no ?? ""),
     description: String(row.description ?? ""),
+    part_number: String(row.part_number ?? ""),
   }));
 }
 
@@ -162,7 +178,7 @@ export async function searchOpenRecallsForVehicle(input: {
   const supabase = getSupabase();
   let query = supabase
     .from("recalls")
-    .select("id, reg_no, vin_number, recall_no, description")
+    .select("id, reg_no, vin_number, model, recall_no, description, part_number")
     .eq("done", 0)
     .order("recall_no", { ascending: true });
 
@@ -181,8 +197,10 @@ export async function searchOpenRecallsForVehicle(input: {
     id: Number(row.id),
     reg_no: String(row.reg_no ?? ""),
     vin_number: String(row.vin_number ?? ""),
+    model: String(row.model ?? ""),
     recall_no: String(row.recall_no ?? ""),
     description: String(row.description ?? ""),
+    part_number: String(row.part_number ?? ""),
   }));
 }
 
@@ -247,10 +265,16 @@ export async function upsertRecalls(
       const next = {
         reg_no: item.reg_no || String(current.reg_no ?? ""),
         vin_number: item.vin_number || String(current.vin_number ?? ""),
+        model: item.model || String(current.model ?? ""),
         description: item.description || String(current.description ?? ""),
+        part_number: item.part_number || String(current.part_number ?? ""),
         surname: item.surname || String(current.surname ?? ""),
         first_name: item.first_name || String(current.first_name ?? ""),
         telephone: item.telephone || String(current.telephone ?? ""),
+        city: item.city || String(current.city ?? ""),
+        registration_date:
+          item.registration_date || String(current.registration_date ?? ""),
+        engine_number: item.engine_number || String(current.engine_number ?? ""),
         done,
         reg_no_norm: normalize(item.reg_no || String(current.reg_no ?? "")),
         vin_number_norm: normalize(
@@ -275,15 +299,22 @@ export async function upsertRecalls(
         vin_number: item.vin_number,
         reg_no_norm,
         vin_number_norm,
+        model: item.model,
         recall_no: item.recall_no,
         description: item.description,
+        part_number: item.part_number,
         surname: item.surname,
         first_name: item.first_name,
         telephone: item.telephone,
+        city: item.city,
+        registration_date: item.registration_date,
+        engine_number: item.engine_number,
         done,
         sms_sent: 0,
       })
-      .select("id, reg_no, vin_number, recall_no, description")
+      .select(
+        "id, reg_no, vin_number, model, recall_no, description, part_number",
+      )
       .single();
 
     if (insertError) throw new Error(insertError.message);
@@ -295,8 +326,10 @@ export async function upsertRecalls(
       id,
       reg_no: String(inserted.reg_no ?? item.reg_no),
       vin_number: String(inserted.vin_number ?? item.vin_number),
+      model: String(inserted.model ?? item.model),
       recall_no: String(inserted.recall_no ?? item.recall_no),
       description: String(inserted.description ?? item.description),
+      part_number: String(inserted.part_number ?? item.part_number),
     });
   }
 
@@ -347,11 +380,16 @@ export async function updateRecall(
       vin_number: data.vin_number,
       reg_no_norm: normalize(data.reg_no),
       vin_number_norm: normalize(data.vin_number),
+      model: data.model,
       recall_no: data.recall_no,
       description: data.description,
+      part_number: data.part_number,
       surname: data.surname,
       first_name: data.first_name,
       telephone: data.telephone,
+      city: data.city,
+      registration_date: data.registration_date,
+      engine_number: data.engine_number,
       done: data.done ? 1 : 0,
       sms_sent: data.sms_sent ? 1 : 0,
     })

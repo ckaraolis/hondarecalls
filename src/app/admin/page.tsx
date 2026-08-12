@@ -6,13 +6,18 @@ type Recall = {
   id: number;
   reg_no: string;
   vin_number: string;
+  model: string;
   recall_no: string;
   description: string;
+  part_number: string;
   surname: string;
   first_name: string;
   telephone: string;
+  city: string;
   done: number;
   sms_sent: number;
+  registration_date: string;
+  engine_number: string;
 };
 
 type RecallGroup = {
@@ -252,11 +257,16 @@ export default function AdminPage() {
     setDraft({
       reg_no: row.reg_no,
       vin_number: row.vin_number,
+      model: row.model ?? "",
       recall_no: row.recall_no,
       description: row.description,
+      part_number: row.part_number ?? "",
       surname: row.surname,
       first_name: row.first_name,
       telephone: row.telephone,
+      city: row.city ?? "",
+      registration_date: row.registration_date ?? "",
+      engine_number: row.engine_number ?? "",
       done: row.done ? 1 : 0,
       sms_sent: row.sms_sent ? 1 : 0,
     });
@@ -687,8 +697,9 @@ export default function AdminPage() {
               Required columns
             </p>
             <p className="mt-2 text-sm font-semibold text-[var(--ink)]">
-              Reg. No · Vin Number · Recall No. · Description · Surname · Name ·
-              Telephone · Done
+              Reg. No · Vin Number · Model · Recall No. · Description · Part
+              Number · Surname · Name · Telephone · City · Done · Registration
+              Date · Engine Number
             </p>
             <a
               href="/templates/honda-recalls-upload-template.xlsx"
@@ -875,12 +886,17 @@ export default function AdminPage() {
                     <tr>
                       <th>Reg. No</th>
                       <th>Vin Number</th>
+                      <th>Model</th>
                       <th>Recall No.</th>
                       <th>Description</th>
+                      <th>Part Number</th>
                       <th>Surname</th>
                       <th>Name</th>
                       <th>Telephone</th>
+                      <th>City</th>
                       <th>Done</th>
+                      <th>Reg. Date</th>
+                      <th>Engine No.</th>
                       <th>Actions</th>
                       <th>SMS Sent</th>
                     </tr>
@@ -914,6 +930,15 @@ export default function AdminPage() {
                             <td>
                               <input
                                 className="input px-2 py-2 text-sm"
+                                value={draft.model}
+                                onChange={(e) =>
+                                  updateDraft("model", e.target.value)
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                className="input px-2 py-2 text-sm"
                                 value={draft.recall_no}
                                 onChange={(e) =>
                                   updateDraft("recall_no", e.target.value)
@@ -926,6 +951,15 @@ export default function AdminPage() {
                                 value={draft.description}
                                 onChange={(e) =>
                                   updateDraft("description", e.target.value)
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                className="input px-2 py-2 text-sm"
+                                value={draft.part_number}
+                                onChange={(e) =>
+                                  updateDraft("part_number", e.target.value)
                                 }
                               />
                             </td>
@@ -957,6 +991,15 @@ export default function AdminPage() {
                               />
                             </td>
                             <td>
+                              <input
+                                className="input px-2 py-2 text-sm"
+                                value={draft.city}
+                                onChange={(e) =>
+                                  updateDraft("city", e.target.value)
+                                }
+                              />
+                            </td>
+                            <td>
                               <select
                                 className="input px-2 py-2 text-sm"
                                 value={draft.done ? "1" : "0"}
@@ -970,6 +1013,27 @@ export default function AdminPage() {
                                 <option value="0">No</option>
                                 <option value="1">Yes</option>
                               </select>
+                            </td>
+                            <td>
+                              <input
+                                className="input px-2 py-2 text-sm"
+                                value={draft.registration_date}
+                                onChange={(e) =>
+                                  updateDraft(
+                                    "registration_date",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                className="input px-2 py-2 text-sm"
+                                value={draft.engine_number}
+                                onChange={(e) =>
+                                  updateDraft("engine_number", e.target.value)
+                                }
+                              />
                             </td>
                             <td>
                               <div className="flex flex-wrap gap-2">
@@ -1016,14 +1080,19 @@ export default function AdminPage() {
                           <td className="font-mono text-sm">
                             {row.vin_number || "—"}
                           </td>
+                          <td>{row.model || "—"}</td>
                           <td>{row.recall_no || "—"}</td>
                           <td>{row.description || "—"}</td>
+                          <td>{row.part_number || "—"}</td>
                           <td>{row.surname || "—"}</td>
                           <td>{row.first_name || "—"}</td>
                           <td>{row.telephone || "—"}</td>
+                          <td>{row.city || "—"}</td>
                           <td>
                             <StatusPill yes={Boolean(row.done)} />
                           </td>
+                          <td>{row.registration_date || "—"}</td>
+                          <td>{row.engine_number || "—"}</td>
                           <td>
                             <div className="flex flex-wrap gap-2">
                               <button
@@ -1084,7 +1153,7 @@ export default function AdminPage() {
             <p className="mt-1 text-sm text-[var(--muted)]">
               Max {SMS_MAX_LENGTH} characters. Placeholders:{" "}
               <span className="font-semibold text-[var(--ink)]">
-                {"{name} {surname} {owner} {reg} {vin} {recall_no} {description}"}
+                {"{name} {surname} {owner} {reg} {vin} {model} {recall_no} {description} {part_number} {city} {engine}"}
               </span>
             </p>
             <form onSubmit={saveSmsTemplate} className="mt-4 space-y-3">

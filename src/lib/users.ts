@@ -94,6 +94,44 @@ export async function findUserById(id: number): Promise<User | null> {
   return data ? mapUser(data as Record<string, unknown>) : null;
 }
 
+export async function updateUserProfile(
+  userId: number,
+  input: {
+    first_name: string;
+    surname: string;
+    telephone: string;
+    city: string;
+  },
+): Promise<User> {
+  const first_name = input.first_name.trim();
+  const surname = input.surname.trim();
+  const telephone = input.telephone.trim();
+  const city = input.city.trim();
+
+  if (!first_name || !surname) {
+    throw new Error("Name and surname are required.");
+  }
+  if (!telephone) {
+    throw new Error("Telephone number is required.");
+  }
+  if (!city) {
+    throw new Error("City is required.");
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("users")
+    .update({ first_name, surname, telephone, city })
+    .eq("id", userId)
+    .select(
+      "id, email, first_name, surname, telephone, city, email_verified, created_at",
+    )
+    .single();
+
+  if (error) throw new Error(error.message);
+  return mapUser(data as Record<string, unknown>);
+}
+
 export async function createUser(input: {
   email: string;
   password: string;

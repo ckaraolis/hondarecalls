@@ -68,8 +68,12 @@ function applyTemplate(template: string, recall: Recall) {
     owner,
     reg: recall.reg_no.trim(),
     vin: recall.vin_number.trim(),
+    model: recall.model.trim(),
     recall_no: recall.recall_no.trim(),
     description: recall.description.trim(),
+    part_number: recall.part_number.trim(),
+    city: recall.city.trim(),
+    engine: recall.engine_number.trim(),
   };
 
   return template.replace(/\{([a-z_]+)\}/gi, (_match, key: string) => {

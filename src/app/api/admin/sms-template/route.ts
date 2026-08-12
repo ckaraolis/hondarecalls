@@ -24,8 +24,12 @@ export async function GET() {
       "{owner}",
       "{reg}",
       "{vin}",
+      "{model}",
       "{recall_no}",
       "{description}",
+      "{part_number}",
+      "{city}",
+      "{engine}",
     ],
     defaultTemplate: DEFAULT_SMS_TEMPLATE,
   });

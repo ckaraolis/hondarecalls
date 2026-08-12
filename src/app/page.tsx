@@ -7,8 +7,10 @@ type Recall = {
   id: number;
   reg_no: string;
   vin_number: string;
+  model: string;
   recall_no: string;
   description: string;
+  part_number: string;
 };
 
 type SearchResponse = {
@@ -135,7 +137,9 @@ export default function HomePage() {
                   <tr>
                     <th>Reg. No</th>
                     <th>Vin Number</th>
+                    <th>Model</th>
                     <th>Recall No.</th>
+                    <th>Part Number</th>
                     <th>Description</th>
                   </tr>
                 </thead>
@@ -144,7 +148,9 @@ export default function HomePage() {
                     <tr key={row.id}>
                       <td className="font-semibold">{row.reg_no || "—"}</td>
                       <td className="font-mono text-sm">{row.vin_number || "—"}</td>
+                      <td>{row.model || "—"}</td>
                       <td>{row.recall_no || "—"}</td>
+                      <td>{row.part_number || "—"}</td>
                       <td>{row.description || "—"}</td>
                     </tr>
                   ))}

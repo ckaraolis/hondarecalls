@@ -1,3 +1,4 @@
+import { isHondaVehicleModel } from "@/lib/honda-models";
 import { getSupabase, normalizeIdentity } from "@/lib/supabase";
 
 export type UserVehicle = {
@@ -89,6 +90,9 @@ export async function addVehicleForUser(
   const color = input.color.trim();
 
   if (!model) throw new Error("Model is required.");
+  if (!isHondaVehicleModel(model)) {
+    throw new Error("Please choose a model from the list.");
+  }
   if (!year) throw new Error("Year is required.");
   if (!color) throw new Error("Color is required.");
   if (!/^\d{4}$/.test(year)) {

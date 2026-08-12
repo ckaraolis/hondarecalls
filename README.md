@@ -67,14 +67,15 @@ Redeploy so verification links and cookies use the live URL.
 
 ## Excel format
 
-| Reg. No | Vin Number | Recall No. | Description | Surname | Name | Telephone | Done |
-|---------|------------|------------|-------------|---------|------|-----------|------|
-| ABC123  | JHMCExxxxx | R-2024-01  | Airbag inflator replacement | Papadopoulos | Maria | 99123456 | Yes |
+| Reg. No | Vin Number | Model | Recall No. | Description | Part Number | Surname | Name | Telephone | City | Done | Registration Date | Engine Number |
+|---------|------------|-------|------------|-------------|-------------|---------|------|-----------|------|------|-------------------|---------------|
+| ABC123  | JHMCExxxxx | Civic | R-2024-01  | Airbag inflator | 06170-TAA-A00 | Papadopoulos | Maria | 99123456 | Limassol | Yes | 2020-05-12 | ENG123 |
 
 Template: [`public/templates/honda-recalls-upload-template.xlsx`](public/templates/honda-recalls-upload-template.xlsx)
 
-Owner/phone fields are admin-only (not shown on public search).
+Owner/phone/city fields are admin-only (not shown on public search).
 
+If your Supabase `recalls` table already exists, also run [`supabase/migration_add_recall_vehicle_fields.sql`](supabase/migration_add_recall_vehicle_fields.sql) once.
 ## SMS (Alt-à-Vie)
 
 ```
