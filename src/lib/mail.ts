@@ -16,6 +16,18 @@ function isSmtpConfigured() {
   );
 }
 
+/** Always send with a friendly display name (avoids Outlook "[Unknown]"). */
+function smtpFromAddress() {
+  const configured = process.env.SMTP_FROM?.trim() || "";
+  const angle = configured.match(/<([^>]+)>/);
+  const email =
+    angle?.[1]?.trim() ||
+    (configured.includes("@") ? configured : "") ||
+    process.env.SMTP_USER?.trim() ||
+    "";
+  return `"Honda Recall Website" <${email}>`;
+}
+
 export async function sendVerificationEmail(input: {
   to: string;
   firstName: string;
@@ -53,9 +65,7 @@ export async function sendVerificationEmail(input: {
 
   try {
     await transporter.sendMail({
-      from:
-        process.env.SMTP_FROM?.trim() ||
-        `"Galatariotis Recall Check" <${process.env.SMTP_USER}>`,
+      from: smtpFromAddress(),
       to: input.to,
       subject,
       text,
@@ -163,9 +173,7 @@ export async function sendAppointmentRequestEmail(input: {
   });
 
   await transporter.sendMail({
-    from:
-      process.env.SMTP_FROM?.trim() ||
-      `"Galatariotis Recall Check" <${process.env.SMTP_USER}>`,
+    from: smtpFromAddress(),
     to,
     replyTo: input.customerEmail,
     subject,
