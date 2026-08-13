@@ -54,18 +54,20 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => null);
-  const rawIds = Array.isArray(body?.ids) ? body.ids : null;
+  const rawIds: unknown[] | null = Array.isArray(body?.ids)
+    ? (body.ids as unknown[])
+    : null;
   const recallNo =
     typeof body?.recallNo === "string" ? body.recallNo.trim() : "";
 
   if (rawIds) {
-    const ids = [
-      ...new Set(
-        rawIds
-          .map((value: unknown) => Number(value))
-          .filter((id: number) => Number.isFinite(id) && id > 0),
-      ),
-    ];
+    const ids: number[] = [];
+    for (const value of rawIds) {
+      const id = Number(value);
+      if (Number.isFinite(id) && id > 0 && !ids.includes(id)) {
+        ids.push(id);
+      }
+    }
     if (ids.length === 0) {
       return NextResponse.json(
         { error: "Select at least one entry to send SMS." },
