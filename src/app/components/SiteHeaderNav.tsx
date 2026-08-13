@@ -105,6 +105,23 @@ export default function SiteHeaderNav() {
   }
 
   async function markRead(id?: number) {
+    const now = new Date().toISOString();
+    if (id) {
+      setNotifications((prev) =>
+        prev.map((item) =>
+          item.id === id && !item.read_at ? { ...item, read_at: now } : item,
+        ),
+      );
+      setUnreadCount((count) => Math.max(0, count - 1));
+    } else {
+      setNotifications((prev) =>
+        prev.map((item) =>
+          item.read_at ? item : { ...item, read_at: now },
+        ),
+      );
+      setUnreadCount(0);
+    }
+
     await fetch("/api/account/notifications/read", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -114,11 +131,9 @@ export default function SiteHeaderNav() {
   }
 
   async function onNotificationClick(item: NotificationItem) {
-    setOpen(false);
     if (!item.read_at) {
       await markRead(item.id);
     }
-    router.push("/account");
   }
 
   return (
@@ -157,7 +172,7 @@ export default function SiteHeaderNav() {
               )}
             </button>
             {open && (
-              <div className="absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--line)] bg-white shadow-lg">
+              <div className="absolute right-0 z-[100] mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--line)] bg-white shadow-xl">
                 <div className="flex items-center justify-between border-b border-[var(--line)] px-3 py-2">
                   <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">
                     Notifications
@@ -166,7 +181,7 @@ export default function SiteHeaderNav() {
                     <button
                       type="button"
                       className="text-xs font-semibold text-[var(--honda-red)]"
-                      onClick={() => markRead()}
+                      onClick={() => void markRead()}
                     >
                       Mark all read
                     </button>
@@ -183,16 +198,36 @@ export default function SiteHeaderNav() {
                         key={item.id}
                         type="button"
                         className={`block w-full border-b border-[var(--line)] px-3 py-3 text-left last:border-b-0 hover:bg-[#f7f9fc] ${
-                          item.read_at ? "opacity-70" : ""
+                          item.read_at
+                            ? "bg-white text-[var(--muted)]"
+                            : "bg-[#fff7f8]"
                         }`}
-                        onClick={() => onNotificationClick(item)}
+                        onClick={() => void onNotificationClick(item)}
                       >
-                        <p className="text-sm font-semibold text-[var(--ink)]">
-                          {item.title}
-                        </p>
-                        <p className="mt-0.5 text-xs text-[var(--muted)]">
-                          {item.body}
-                        </p>
+                        <div className="flex items-start gap-2">
+                          <span className="mt-1.5 flex h-2 w-2 shrink-0 items-center justify-center">
+                            {!item.read_at && (
+                              <span
+                                className="h-2 w-2 rounded-full bg-[var(--honda-red)]"
+                                aria-hidden="true"
+                              />
+                            )}
+                          </span>
+                          <div>
+                            <p
+                              className={`text-sm ${
+                                item.read_at
+                                  ? "font-medium text-[var(--muted)]"
+                                  : "font-semibold text-[var(--ink)]"
+                              }`}
+                            >
+                              {item.title}
+                            </p>
+                            <p className="mt-0.5 text-xs text-[var(--muted)]">
+                              {item.body}
+                            </p>
+                          </div>
+                        </div>
                       </button>
                     ))
                   )}

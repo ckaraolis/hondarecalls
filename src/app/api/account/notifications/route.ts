@@ -14,7 +14,7 @@ export async function GET() {
   }
 
   const [notifications, unreadCount] = await Promise.all([
-    listNotificationsForUser(user.id),
+    listNotificationsForUser(user.id, 2),
     countUnreadNotifications(user.id),
   ]);
 

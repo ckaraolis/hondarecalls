@@ -27,7 +27,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${display.variable} ${body.variable} h-full`}>
       <body className="min-h-full flex flex-col antialiased">
-        <header className="border-b border-[var(--line)]/70 bg-white/70 backdrop-blur-md">
+        <header className="relative z-50 border-b border-[var(--line)]/70 bg-white/70 backdrop-blur-md">
           <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-5 py-4">
             <Link
               href="/"
