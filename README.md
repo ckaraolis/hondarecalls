@@ -31,6 +31,7 @@ Open [http://localhost:3000](http://localhost:3000). Admin: [/admin](http://loca
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
+ADMIN_USERNAME=admin
 ADMIN_PASSWORD=honda
 SESSION_SECRET=change-me-to-a-long-random-string
 APP_URL=http://localhost:3000

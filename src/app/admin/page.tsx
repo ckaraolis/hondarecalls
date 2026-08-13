@@ -61,9 +61,11 @@ function StatusPill({
 export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const [checking, setChecking] = useState(true);
+  const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
+  const [adminUsername, setAdminUsername] = useState<string | null>(null);
 
   const [mainSection, setMainSection] = useState<MainSection>("overview");
   const [file, setFile] = useState<File | null>(null);
@@ -87,20 +89,26 @@ export default function AdminPage() {
     null,
   );
   const [smsTemplateError, setSmsTemplateError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   const stats = useMemo(() => {
     const done = rows.filter((r) => r.done).length;
     const smsSent = rows.filter((r) => r.sms_sent).length;
     const withPhone = rows.filter((r) => r.telephone.trim()).length;
+    const selectedWithPhone = rows.filter(
+      (r) => selectedIds.includes(r.id) && r.telephone.trim(),
+    ).length;
     return {
       total: count,
       campaigns: groups.length,
       doneInView: done,
       smsSentInView: smsSent,
       withPhoneInView: withPhone,
+      selectedCount: selectedIds.length,
+      selectedWithPhone,
       openInView: rows.length - done,
     };
-  }, [count, groups.length, rows]);
+  }, [count, groups.length, rows, selectedIds]);
 
   const loadSmsTemplate = useCallback(async () => {
     const response = await fetch("/api/admin/sms-template");
@@ -121,6 +129,7 @@ export default function AdminPage() {
       const response = await fetch(`/api/admin/recalls${query}`);
       if (response.status === 401) {
         setAuthed(false);
+        setAdminUsername(null);
         return;
       }
       const data = await response.json();
@@ -128,6 +137,12 @@ export default function AdminPage() {
       setGroups(data.groups ?? []);
       setRows(data.rows ?? []);
       setAuthed(true);
+
+      const sessionResponse = await fetch("/api/admin/session");
+      const session = await sessionResponse.json().catch(() => null);
+      if (session?.authenticated) {
+        setAdminUsername(String(session.username ?? "admin"));
+      }
     },
     [recallFilter],
   );
@@ -138,6 +153,35 @@ export default function AdminPage() {
       .finally(() => setChecking(false));
   }, [loadRecalls, loadSmsTemplate]);
 
+  useEffect(() => {
+    function onAdminAuthChanged() {
+      void fetch("/api/admin/session")
+        .then(async (response) => {
+          const data = await response.json().catch(() => null);
+          if (!data?.authenticated) {
+            setAuthed(false);
+            setAdminUsername(null);
+            setRows([]);
+            setGroups([]);
+            setCount(0);
+            setSelectedIds([]);
+            return;
+          }
+          setAdminUsername(String(data.username ?? "admin"));
+          await loadRecalls();
+        })
+        .catch(() => {
+          setAuthed(false);
+          setAdminUsername(null);
+        });
+    }
+
+    window.addEventListener("admin-auth-changed", onAdminAuthChanged);
+    return () => {
+      window.removeEventListener("admin-auth-changed", onAdminAuthChanged);
+    };
+  }, [loadRecalls]);
+
   async function onLogin(event: FormEvent) {
     event.preventDefault();
     setLoggingIn(true);
@@ -147,7 +191,7 @@ export default function AdminPage() {
       const response = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -155,32 +199,18 @@ export default function AdminPage() {
         return;
       }
       setPassword("");
+      setAdminUsername(
+        typeof data.username === "string" ? data.username : username.trim(),
+      );
       setRecallFilter("all");
       setMainSection("overview");
       await Promise.all([loadRecalls("all"), loadSmsTemplate()]);
+      window.dispatchEvent(new Event("admin-auth-changed"));
     } catch {
       setLoginError("Could not reach the server.");
     } finally {
       setLoggingIn(false);
     }
-  }
-
-  async function onLogout() {
-    await fetch("/api/admin/logout", { method: "POST" });
-    setAuthed(false);
-    setRows([]);
-    setGroups([]);
-    setCount(0);
-    setRecallFilter("all");
-    setMainSection("overview");
-    setMessage(null);
-    setError(null);
-    setSmsFeedback(null);
-    setEditingId(null);
-    setDraft(null);
-    setSmsTemplate("");
-    setSmsTemplateMessage(null);
-    setSmsTemplateError(null);
   }
 
   async function saveSmsTemplate(event: FormEvent) {
@@ -249,7 +279,22 @@ export default function AdminPage() {
     setRecallFilter(tab);
     setEditingId(null);
     setDraft(null);
+    setSelectedIds([]);
     await loadRecalls(tab);
+  }
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id],
+    );
+  }
+
+  function toggleSelectAllVisible() {
+    const visibleIds = rows.map((row) => row.id);
+    const allSelected =
+      visibleIds.length > 0 &&
+      visibleIds.every((id) => selectedIds.includes(id));
+    setSelectedIds(allSelected ? [] : visibleIds);
   }
 
   function startEdit(row: Recall) {
@@ -491,6 +536,48 @@ export default function AdminPage() {
     }
   }
 
+  async function sendSelectedSms() {
+    if (selectedIds.length === 0) {
+      setSmsFeedback("Select one or more entries with the checkboxes first.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Are you sure you want to send SMS to the selected entries?\n\n` +
+        `${stats.selectedCount} selected\n` +
+        `${stats.selectedWithPhone} with a telephone number`,
+    );
+    if (!confirmed) return;
+
+    setBulkSmsBusy(true);
+    setSmsFeedback(null);
+    setMessage(null);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/sms/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+      const data = await response.json();
+      const detail = data.message || data.error || "Selected SMS finished.";
+      setSmsFeedback(detail);
+      if (response.ok || data.sent > 0) {
+        setMessage(detail);
+        window.alert(detail);
+        setSelectedIds([]);
+      } else {
+        window.alert(detail);
+      }
+      await loadRecalls(recallFilter);
+    } catch {
+      setSmsFeedback("Could not send SMS to selected entries.");
+      window.alert("Could not send SMS to selected entries.");
+    } finally {
+      setBulkSmsBusy(false);
+    }
+  }
+
   if (checking) {
     return (
       <div className="fade-up flex flex-1 items-center justify-center py-20">
@@ -515,18 +602,35 @@ export default function AdminPage() {
           onSubmit={onLogin}
           className="panel mt-8 space-y-4 rounded-2xl p-6 sm:p-7"
         >
-          <label className="block text-sm font-semibold" htmlFor="password">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            className="input"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            autoFocus
-          />
+          <div>
+            <label className="mb-1 block text-sm font-semibold" htmlFor="username">
+              Username
+            </label>
+            <input
+              id="username"
+              type="text"
+              className="input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              autoFocus
+              required
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-semibold" htmlFor="password">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </div>
           {loginError && (
             <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {loginError}
@@ -542,21 +646,26 @@ export default function AdminPage() {
 
   return (
     <div className="fade-up space-y-6 pb-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="brand-mark text-xs font-bold text-[var(--honda-red)]">
-            Control panel
-          </p>
-          <h1 className="mt-1 font-[family-name:var(--font-display)] text-4xl tracking-wide sm:text-5xl">
-            Admin
-          </h1>
-          <p className="mt-2 max-w-xl text-[var(--muted)]">
-            Import Excel data, manage vehicle recalls, and notify owners by SMS.
-          </p>
-        </div>
-        <button className="btn btn-secondary" onClick={onLogout} type="button">
-          Log out
-        </button>
+      <header>
+        <p className="brand-mark text-xs font-bold text-[var(--honda-red)]">
+          Control panel
+        </p>
+        <h1 className="mt-1 font-[family-name:var(--font-display)] text-4xl tracking-wide sm:text-5xl">
+          Admin
+        </h1>
+        <p className="mt-2 max-w-xl text-[var(--muted)]">
+          Import Excel data, manage vehicle recalls, and notify owners by SMS.
+          {adminUsername ? (
+            <>
+              {" "}
+              Signed in as{" "}
+              <span className="font-semibold text-[var(--ink)]">
+                {adminUsername}
+              </span>
+              .
+            </>
+          ) : null}
+        </p>
       </header>
 
       <nav
@@ -762,14 +871,28 @@ export default function AdminPage() {
               <div>
                 <h2 className="text-xl font-semibold">Recall Campaigns</h2>
                 <p className="mt-1 text-sm text-[var(--muted)]">
-                  Filter by Recall No., then edit, delete rows, or remove a whole
-                  campaign.
+                  Filter by Recall No., tick entries to SMS, edit or delete rows,
+                  or remove a whole campaign.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   className="btn btn-primary px-4 py-2 text-sm"
+                  disabled={
+                    bulkSmsBusy || campaignBusy || selectedIds.length === 0
+                  }
+                  onClick={sendSelectedSms}
+                >
+                  {bulkSmsBusy
+                    ? "Sending…"
+                    : selectedIds.length === 0
+                      ? "SMS selected"
+                      : `SMS selected (${selectedIds.length})`}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary px-4 py-2 text-sm"
                   disabled={
                     bulkSmsBusy ||
                     campaignBusy ||
@@ -884,6 +1007,17 @@ export default function AdminPage() {
                 <table className="data">
                   <thead>
                     <tr>
+                      <th className="w-10">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all visible entries"
+                          checked={
+                            rows.length > 0 &&
+                            rows.every((row) => selectedIds.includes(row.id))
+                          }
+                          onChange={toggleSelectAllVisible}
+                        />
+                      </th>
                       <th>Reg. No</th>
                       <th>Vin Number</th>
                       <th>Model</th>
@@ -905,10 +1039,19 @@ export default function AdminPage() {
                     {rows.map((row) => {
                       const isEditing = editingId === row.id && draft;
                       const busy = rowBusyId === row.id;
+                      const selected = selectedIds.includes(row.id);
 
                       if (isEditing) {
                         return (
                           <tr key={row.id}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                aria-label={`Select ${row.reg_no || row.id}`}
+                                checked={selected}
+                                onChange={() => toggleSelected(row.id)}
+                              />
+                            </td>
                             <td>
                               <input
                                 className="input px-2 py-2 text-sm"
@@ -1036,18 +1179,18 @@ export default function AdminPage() {
                               />
                             </td>
                             <td>
-                              <div className="flex flex-wrap gap-2">
+                              <div className="flex flex-nowrap items-center gap-1">
                                 <button
                                   type="button"
-                                  className="btn btn-primary px-3 py-2 text-sm"
+                                  className="btn btn-primary btn-sm"
                                   disabled={busy}
                                   onClick={() => saveEdit(row.id)}
                                 >
-                                  {busy ? "Saving…" : "Save"}
+                                  {busy ? "…" : "Save"}
                                 </button>
                                 <button
                                   type="button"
-                                  className="btn btn-secondary px-3 py-2 text-sm"
+                                  className="btn btn-secondary btn-sm"
                                   disabled={busy}
                                   onClick={cancelEdit}
                                 >
@@ -1076,6 +1219,14 @@ export default function AdminPage() {
 
                       return (
                         <tr key={row.id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${row.reg_no || row.id}`}
+                              checked={selected}
+                              onChange={() => toggleSelected(row.id)}
+                            />
+                          </td>
                           <td className="font-semibold">{row.reg_no || "—"}</td>
                           <td className="font-mono text-sm">
                             {row.vin_number || "—"}
@@ -1094,10 +1245,10 @@ export default function AdminPage() {
                           <td>{row.registration_date || "—"}</td>
                           <td>{row.engine_number || "—"}</td>
                           <td>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-nowrap items-center gap-1 whitespace-nowrap">
                               <button
                                 type="button"
-                                className="btn btn-secondary px-3 py-2 text-sm"
+                                className="btn btn-secondary btn-sm"
                                 disabled={busy || editingId !== null}
                                 onClick={() => startEdit(row)}
                               >
@@ -1105,7 +1256,7 @@ export default function AdminPage() {
                               </button>
                               <button
                                 type="button"
-                                className="btn btn-secondary px-3 py-2 text-sm"
+                                className="btn btn-secondary btn-sm"
                                 disabled={
                                   busy ||
                                   smsBusyId === row.id ||
@@ -1119,16 +1270,16 @@ export default function AdminPage() {
                                     : "No telephone on this record"
                                 }
                               >
-                                {smsBusyId === row.id ? "Sending…" : "SMS"}
+                                {smsBusyId === row.id ? "…" : "SMS"}
                               </button>
                               <button
                                 type="button"
-                                className="btn px-3 py-2 text-sm text-white"
+                                className="btn btn-sm text-white"
                                 style={{ background: "#9b1c1c" }}
                                 disabled={busy || editingId !== null}
                                 onClick={() => deleteRow(row)}
                               >
-                                {busy ? "…" : "Delete"}
+                                {busy ? "…" : "Del"}
                               </button>
                             </div>
                           </td>
@@ -1200,8 +1351,8 @@ export default function AdminPage() {
           <div className="panel rounded-2xl p-6 sm:p-7">
             <h2 className="text-xl font-semibold">Send SMS</h2>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              Send to one owner from Recall Campaigns, or message everyone on a
-              selected Recall No.
+              In Recall Campaigns, tick entries and use SMS selected, or send to
+              everyone on a Recall No. filter.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-3">
@@ -1210,11 +1361,23 @@ export default function AdminPage() {
                 className="btn btn-secondary text-sm"
                 onClick={() => setMainSection("campaigns")}
               >
-                Open Recall Campaigns to send one-by-one
+                Open Recall Campaigns
               </button>
               <button
                 type="button"
                 className="btn btn-primary text-sm"
+                disabled={bulkSmsBusy || selectedIds.length === 0}
+                onClick={sendSelectedSms}
+              >
+                {bulkSmsBusy
+                  ? "Sending…"
+                  : selectedIds.length === 0
+                    ? "SMS selected"
+                    : `SMS selected (${selectedIds.length})`}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary text-sm"
                 disabled={
                   bulkSmsBusy || recallFilter === "all" || rows.length === 0
                 }

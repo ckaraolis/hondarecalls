@@ -22,7 +22,9 @@ type NotificationItem = {
 export default function SiteHeaderNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const isAdminPath = pathname.startsWith("/admin");
   const [user, setUser] = useState<User | null>(null);
+  const [adminUsername, setAdminUsername] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
@@ -47,6 +49,29 @@ export default function SiteHeaderNav() {
 
   useEffect(() => {
     let cancelled = false;
+
+    if (isAdminPath) {
+      setUser(null);
+      setNotifications([]);
+      setUnreadCount(0);
+      fetch("/api/admin/session")
+        .then(async (response) => {
+          const data = await response.json().catch(() => null);
+          if (!cancelled) {
+            setAdminUsername(
+              data?.authenticated ? String(data.username ?? "admin") : null,
+            );
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setAdminUsername(null);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setAdminUsername(null);
     fetch("/api/auth/me")
       .then(async (response) => {
         if (!response.ok) {
@@ -73,7 +98,7 @@ export default function SiteHeaderNav() {
     return () => {
       cancelled = true;
     };
-  }, [pathname, loadNotifications]);
+  }, [pathname, isAdminPath, loadNotifications]);
 
   useEffect(() => {
     if (!user) return;
@@ -103,6 +128,34 @@ export default function SiteHeaderNav() {
     router.push("/");
     router.refresh();
   }
+
+  async function adminLogout() {
+    await fetch("/api/admin/logout", { method: "POST" });
+    setAdminUsername(null);
+    window.dispatchEvent(new Event("admin-auth-changed"));
+    router.push("/admin");
+    router.refresh();
+  }
+
+  useEffect(() => {
+    if (!isAdminPath) return;
+
+    function refreshAdminSession() {
+      fetch("/api/admin/session")
+        .then(async (response) => {
+          const data = await response.json().catch(() => null);
+          setAdminUsername(
+            data?.authenticated ? String(data.username ?? "admin") : null,
+          );
+        })
+        .catch(() => setAdminUsername(null));
+    }
+
+    window.addEventListener("admin-auth-changed", refreshAdminSession);
+    return () => {
+      window.removeEventListener("admin-auth-changed", refreshAdminSession);
+    };
+  }, [isAdminPath]);
 
   async function markRead(id?: number) {
     const now = new Date().toISOString();
@@ -134,6 +187,28 @@ export default function SiteHeaderNav() {
     if (!item.read_at) {
       await markRead(item.id);
     }
+  }
+
+  if (isAdminPath) {
+    return (
+      <nav className="flex flex-wrap items-center gap-3 text-sm font-semibold text-[var(--muted)] sm:gap-4">
+        <Link href="/" className="hover:text-[var(--ink)]">
+          Search
+        </Link>
+        {adminUsername ? (
+          <>
+            <span className="text-[var(--ink)]">Hi, {adminUsername}</span>
+            <button
+              type="button"
+              onClick={() => void adminLogout()}
+              className="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 hover:border-[var(--honda-red)] hover:text-[var(--honda-red)]"
+            >
+              Log out
+            </button>
+          </>
+        ) : null}
+      </nav>
+    );
   }
 
   return (

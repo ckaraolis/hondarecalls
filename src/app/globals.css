@@ -103,6 +103,14 @@ a {
   color: var(--ink);
 }
 
+.btn-sm {
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  font-weight: 650;
+}
+
 .fade-up {
   animation: fadeUp 0.55s ease both;
 }

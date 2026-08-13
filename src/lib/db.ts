@@ -27,6 +27,7 @@ export type PublicRecall = {
   recall_no: string;
   description: string;
   part_number: string;
+  done: number;
 };
 
 export type UpsertResult = {
@@ -107,6 +108,7 @@ export function toPublicRecall(row: Recall): PublicRecall {
     recall_no: row.recall_no,
     description: row.description,
     part_number: row.part_number,
+    done: row.done ? 1 : 0,
   };
 }
 
@@ -149,7 +151,9 @@ export async function searchRecalls(query: string): Promise<PublicRecall[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("recalls")
-    .select("id, reg_no, vin_number, model, recall_no, description, part_number")
+    .select(
+      "id, reg_no, vin_number, model, recall_no, description, part_number, done",
+    )
     .or(`reg_no_norm.eq."${q}",vin_number_norm.eq."${q}"`)
     .order("recall_no", { ascending: true });
 
@@ -163,13 +167,12 @@ export async function searchRecalls(query: string): Promise<PublicRecall[]> {
     recall_no: String(row.recall_no ?? ""),
     description: String(row.description ?? ""),
     part_number: String(row.part_number ?? ""),
+    done: Number(row.done) ? 1 : 0,
   }));
 }
 
 /** All recalls (open + completed) matching a vehicle's reg and/or VIN. */
-export type VehicleRecall = PublicRecall & {
-  done: number;
-};
+export type VehicleRecall = PublicRecall;
 
 export async function searchRecallsForVehicle(input: {
   reg_no: string;
@@ -216,7 +219,7 @@ export async function searchOpenRecallsForVehicle(input: {
   vin_number?: string;
 }): Promise<PublicRecall[]> {
   const rows = await searchRecallsForVehicle(input);
-  return rows.filter((row) => !row.done).map(({ done: _done, ...row }) => row);
+  return rows.filter((row) => !row.done);
 }
 
 /**
@@ -328,7 +331,7 @@ export async function upsertRecalls(
         sms_sent: 0,
       })
       .select(
-        "id, reg_no, vin_number, model, recall_no, description, part_number",
+        "id, reg_no, vin_number, model, recall_no, description, part_number, done",
       )
       .single();
 
@@ -345,6 +348,7 @@ export async function upsertRecalls(
       recall_no: String(inserted.recall_no ?? item.recall_no),
       description: String(inserted.description ?? item.description),
       part_number: String(inserted.part_number ?? item.part_number),
+      done: Number(inserted.done ?? done) ? 1 : 0,
     });
   }
 
@@ -519,6 +523,19 @@ export async function listRecallsByRecallNo(
     .from("recalls")
     .select(RECALL_COLUMNS)
     .eq("recall_no", recallNo)
+    .order("id", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => mapRecall(row as Record<string, unknown>));
+}
+
+export async function listRecallsByIds(ids: number[]): Promise<Recall[]> {
+  if (ids.length === 0) return [];
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("recalls")
+    .select(RECALL_COLUMNS)
+    .in("id", ids)
     .order("id", { ascending: true });
 
   if (error) throw new Error(error.message);
