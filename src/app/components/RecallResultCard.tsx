@@ -21,12 +21,12 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function RecallResultCard({
+export default function RecallResultCard<T extends RecallResultCardData>({
   recall,
   onRequestAppointment,
 }: {
-  recall: RecallResultCardData;
-  onRequestAppointment?: (recall: RecallResultCardData) => void;
+  recall: T;
+  onRequestAppointment?: (recall: T) => void;
 }) {
   const status = recall.done ? "Completed" : "Pending";
 
