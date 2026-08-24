@@ -52,19 +52,8 @@ export async function sendVerificationEmail(input: {
     };
   }
 
-  const port = Number(process.env.SMTP_PORT || 587);
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port,
-    secure: process.env.SMTP_SECURE === "true" || port === 465,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
   try {
-    await transporter.sendMail({
+    await createTransporter().sendMail({
       from: smtpFromAddress(),
       to: input.to,
       subject,
@@ -109,6 +98,60 @@ function appointmentInbox() {
   return process.env.SMTP_USER?.trim() || "";
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function createTransporter() {
+  const port = Number(process.env.SMTP_PORT || 587);
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port,
+    secure: process.env.SMTP_SECURE === "true" || port === 465,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+}
+
+function appointmentConfirmationCopy(input: {
+  customerName: string;
+  regNo: string;
+  recallNo: string;
+  description: string;
+}) {
+  const greetingName = input.customerName.trim() || "customer";
+  const recallLabel = input.recallNo || "—";
+  const description = input.description || "—";
+  const subject = `Appointment request received — ${input.regNo || "Honda recall"}`;
+  const text =
+    `Hello ${greetingName},\n\n` +
+    `Thank you. Your appointment request was submitted successfully.\n\n` +
+    `The service department will call you soon to arrange your appointment.\n\n` +
+    `Car Number: ${input.regNo || "—"}\n` +
+    `Recall Number: ${recallLabel}\n` +
+    `Description: ${description}\n\n` +
+    `Galatariotis Recall Check`;
+  const html = `
+    <p>Hello ${escapeHtml(greetingName)},</p>
+    <p>Thank you. Your appointment request was submitted successfully.</p>
+    <p>The service department will call you soon to arrange your appointment.</p>
+    <table cellpadding="6" style="border-collapse:collapse">
+      <tr><td><strong>Car Number</strong></td><td>${escapeHtml(input.regNo || "—")}</td></tr>
+      <tr><td><strong>Recall Number</strong></td><td>${escapeHtml(recallLabel)}</td></tr>
+      <tr><td><strong>Description</strong></td><td>${escapeHtml(description)}</td></tr>
+    </table>
+    <p>Galatariotis Recall Check</p>
+  `;
+  return { subject, text, html };
+}
+
 export async function sendAppointmentRequestEmail(input: {
   customerEmail: string;
   customerName: string;
@@ -141,19 +184,25 @@ export async function sendAppointmentRequestEmail(input: {
   const html = `
     <h2>Appointment Request</h2>
     <table cellpadding="6" style="border-collapse:collapse">
-      <tr><td><strong>Email</strong></td><td>${input.customerEmail}</td></tr>
-      <tr><td><strong>Name</strong></td><td>${input.customerName}</td></tr>
-      <tr><td><strong>Telephone</strong></td><td>${input.telephone}</td></tr>
-      <tr><td><strong>City</strong></td><td>${input.city}</td></tr>
-      <tr><td><strong>Car Number</strong></td><td>${input.regNo}</td></tr>
-      <tr><td><strong>Recall Number</strong></td><td>${input.recallNo || "—"}</td></tr>
-      <tr><td><strong>Description</strong></td><td>${input.description || "—"}</td></tr>
-      <tr><td><strong>Odometer (KM)</strong></td><td>${input.odometerKm}</td></tr>
+      <tr><td><strong>Email</strong></td><td>${escapeHtml(input.customerEmail)}</td></tr>
+      <tr><td><strong>Name</strong></td><td>${escapeHtml(input.customerName)}</td></tr>
+      <tr><td><strong>Telephone</strong></td><td>${escapeHtml(input.telephone)}</td></tr>
+      <tr><td><strong>City</strong></td><td>${escapeHtml(input.city)}</td></tr>
+      <tr><td><strong>Car Number</strong></td><td>${escapeHtml(input.regNo)}</td></tr>
+      <tr><td><strong>Recall Number</strong></td><td>${escapeHtml(input.recallNo || "—")}</td></tr>
+      <tr><td><strong>Description</strong></td><td>${escapeHtml(input.description || "—")}</td></tr>
+      <tr><td><strong>Odometer (KM)</strong></td><td>${escapeHtml(input.odometerKm)}</td></tr>
     </table>
   `;
+  const confirmation = appointmentConfirmationCopy(input);
 
   if (!isSmtpConfigured()) {
     console.info("[email:dev] Appointment request to", to, text);
+    console.info(
+      "[email:dev] Appointment confirmation to",
+      input.customerEmail,
+      confirmation.text,
+    );
     return {
       sent: false,
       message:
@@ -161,16 +210,7 @@ export async function sendAppointmentRequestEmail(input: {
     };
   }
 
-  const port = Number(process.env.SMTP_PORT || 587);
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port,
-    secure: process.env.SMTP_SECURE === "true" || port === 465,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+  const transporter = createTransporter();
 
   await transporter.sendMail({
     from: smtpFromAddress(),
@@ -181,8 +221,26 @@ export async function sendAppointmentRequestEmail(input: {
     html,
   });
 
+  let confirmationSent = false;
+  try {
+    await transporter.sendMail({
+      from: smtpFromAddress(),
+      to: input.customerEmail,
+      subject: confirmation.subject,
+      text: confirmation.text,
+      html: confirmation.html,
+    });
+    confirmationSent = true;
+  } catch (error) {
+    const detail =
+      error instanceof Error ? error.message : "Unknown SMTP error.";
+    console.error("[email] Failed to send appointment confirmation:", detail);
+  }
+
   return {
     sent: true,
-    message: "Appointment request sent. We will contact you soon.",
+    message: confirmationSent
+      ? "Appointment request sent. A confirmation email was sent to you. The service department will call you soon to arrange your appointment."
+      : "Appointment request sent. The service department will call you soon to arrange your appointment.",
   };
 }
