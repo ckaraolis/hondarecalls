@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
+import RecallResultCard from "./components/RecallResultCard";
 
 type Recall = {
   id: number;
@@ -255,7 +256,16 @@ export default function HomePage() {
                 </p>
               </div>
             </div>
-            <div className="table-wrap overflow-hidden rounded-xl border border-[var(--line)]">
+            <div className="space-y-3 md:hidden">
+              {results.map((row) => (
+                <RecallResultCard
+                  key={row.id}
+                  recall={row}
+                  onRequestAppointment={openAppointment}
+                />
+              ))}
+            </div>
+            <div className="table-wrap hidden overflow-hidden rounded-xl border border-[var(--line)] md:block">
               <table className="data">
                 <thead>
                   <tr>
