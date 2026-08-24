@@ -87,6 +87,8 @@ ALTAVIE_SMS_SENDER=YourSenderId
 ALTAVIE_SMS_DRY_RUN=false
 ```
 
+The admin page shows remaining Alt-à-Vie SMS credits from `GetCredits=Y` on the same endpoint.
+
 Appointment request emails go to `APPOINTMENT_TO`, or fall back to `SMTP_FROM` / `SMTP_USER`. After that send succeeds, the customer also receives a confirmation email.
 
 ## Browser push

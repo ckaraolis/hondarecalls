@@ -47,6 +47,126 @@ function isSmsConfigured() {
   return Boolean(getLogin() && getPassword() && getSenderId());
 }
 
+function isCreditsConfigured() {
+  return Boolean(getLogin() && getPassword());
+}
+
+function parseCredits(body: string): number | null {
+  const trimmed = body.trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (typeof parsed === "number" && Number.isFinite(parsed)) return parsed;
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>;
+      for (const key of ["credits", "Credits", "balance", "Balance", "credit"]) {
+        const value = record[key];
+        if (typeof value === "number" && Number.isFinite(value)) return value;
+        if (typeof value === "string") {
+          const n = Number(value.replace(",", "."));
+          if (Number.isFinite(n)) return n;
+        }
+      }
+    }
+  } catch {
+    // Plain text / HTML from Alt-à-Vie.
+  }
+
+  const plain = trimmed
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const lowered = plain.toLowerCase();
+  if (
+    /invalid|error|fail|denied|unauthorized|wrong password|login failed/.test(
+      lowered,
+    ) &&
+    !/\d/.test(plain)
+  ) {
+    return null;
+  }
+
+  const matches = plain.match(/-?\d+(?:[.,]\d+)?/g);
+  if (!matches?.length) return null;
+  if (/^-?\d+(?:[.,]\d+)?$/.test(plain)) {
+    const n = Number(plain.replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  }
+  const labeled = plain.match(
+    /credits?\s*(?:remaining|balance)?\s*[:=]?\s*(-?\d+(?:[.,]\d+)?)/i,
+  );
+  if (labeled) {
+    const n = Number(labeled[1].replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  }
+  const last = matches[matches.length - 1].replace(",", ".");
+  const n = Number(last);
+  return Number.isFinite(n) ? n : null;
+}
+
+export type SmsCreditsResult = {
+  ok: boolean;
+  credits: number | null;
+  message: string;
+};
+
+/** Remaining Alt-à-Vie SMS credits: GetCredits=Y&login=&pwd= */
+export async function getSmsCredits(): Promise<SmsCreditsResult> {
+  if (!isCreditsConfigured()) {
+    return {
+      ok: false,
+      credits: null,
+      message:
+        "SMS credits are not configured. Set ALTAVIE_SMS_LOGIN and ALTAVIE_SMS_PASSWORD.",
+    };
+  }
+
+  const url = new URL(getEndpoint());
+  url.searchParams.set("GetCredits", "Y");
+  url.searchParams.set("login", getLogin());
+  url.searchParams.set("pwd", getPassword());
+
+  try {
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      cache: "no-store",
+    });
+    const body = (await response.text().catch(() => "")).trim();
+    if (isProviderError(response.status, body) && !parseCredits(body)) {
+      const statusText = summarizeProviderBody(body);
+      return {
+        ok: false,
+        credits: null,
+        message: `Could not load SMS credits (${response.status})${statusText ? `: ${statusText}` : "."}`,
+      };
+    }
+
+    const credits = parseCredits(body);
+    if (credits === null) {
+      return {
+        ok: false,
+        credits: null,
+        message: "Could not read the remaining SMS balance from Alt-à-Vie.",
+      };
+    }
+
+    return {
+      ok: true,
+      credits,
+      message: "SMS credits loaded.",
+    };
+  } catch (error) {
+    const detail =
+      error instanceof Error ? error.message : "Unknown credits error.";
+    return {
+      ok: false,
+      credits: null,
+      message: `Failed to reach SMS provider: ${detail}`,
+    };
+  }
+}
+
 /** Cyprus mobile for Alt-à-Vie: no leading 00, +357, or 357. */
 export function normalizeMsisdn(phone: string) {
   let n = phone.replace(/[\s\-().]/g, "");

@@ -90,6 +90,9 @@ export default function AdminPage() {
   );
   const [smsTemplateError, setSmsTemplateError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [smsCredits, setSmsCredits] = useState<number | null>(null);
+  const [smsCreditsLoading, setSmsCreditsLoading] = useState(false);
+  const [smsCreditsError, setSmsCreditsError] = useState<string | null>(null);
 
   const stats = useMemo(() => {
     const done = rows.filter((r) => r.done).length;
@@ -109,6 +112,33 @@ export default function AdminPage() {
       openInView: rows.length - done,
     };
   }, [count, groups.length, rows, selectedIds]);
+
+  const loadSmsCredits = useCallback(async () => {
+    setSmsCreditsLoading(true);
+    try {
+      const response = await fetch("/api/admin/sms/credits", {
+        cache: "no-store",
+      });
+      if (response.status === 401) {
+        setAuthed(false);
+        return;
+      }
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.ok === false) {
+        setSmsCredits(null);
+        setSmsCreditsError(data?.message || data?.error || "Could not load SMS credits.");
+        return;
+      }
+      const credits = Number(data?.credits);
+      setSmsCredits(Number.isFinite(credits) ? credits : null);
+      setSmsCreditsError(null);
+    } catch {
+      setSmsCredits(null);
+      setSmsCreditsError("Could not load SMS credits.");
+    } finally {
+      setSmsCreditsLoading(false);
+    }
+  }, []);
 
   const loadSmsTemplate = useCallback(async () => {
     const response = await fetch("/api/admin/sms-template");
@@ -148,10 +178,10 @@ export default function AdminPage() {
   );
 
   useEffect(() => {
-    Promise.all([loadRecalls(), loadSmsTemplate()])
+    Promise.all([loadRecalls(), loadSmsTemplate(), loadSmsCredits()])
       .catch(() => setAuthed(false))
       .finally(() => setChecking(false));
-  }, [loadRecalls, loadSmsTemplate]);
+  }, [loadRecalls, loadSmsTemplate, loadSmsCredits]);
 
   useEffect(() => {
     function onAdminAuthChanged() {
@@ -165,10 +195,12 @@ export default function AdminPage() {
             setGroups([]);
             setCount(0);
             setSelectedIds([]);
+            setSmsCredits(null);
+            setSmsCreditsError(null);
             return;
           }
           setAdminUsername(String(data.username ?? "admin"));
-          await loadRecalls();
+          await Promise.all([loadRecalls(), loadSmsCredits()]);
         })
         .catch(() => {
           setAuthed(false);
@@ -180,7 +212,7 @@ export default function AdminPage() {
     return () => {
       window.removeEventListener("admin-auth-changed", onAdminAuthChanged);
     };
-  }, [loadRecalls]);
+  }, [loadRecalls, loadSmsCredits]);
 
   async function onLogin(event: FormEvent) {
     event.preventDefault();
@@ -204,7 +236,7 @@ export default function AdminPage() {
       );
       setRecallFilter("all");
       setMainSection("overview");
-      await Promise.all([loadRecalls("all"), loadSmsTemplate()]);
+      await Promise.all([loadRecalls("all"), loadSmsTemplate(), loadSmsCredits()]);
       window.dispatchEvent(new Event("admin-auth-changed"));
     } catch {
       setLoginError("Could not reach the server.");
@@ -479,7 +511,7 @@ export default function AdminPage() {
         const success = data.message || `SMS sent successfully to ${phone}.`;
         setMessage(success);
         window.alert(success);
-        await loadRecalls(recallFilter);
+        await Promise.all([loadRecalls(recallFilter), loadSmsCredits()]);
       } else {
         window.alert(data.message || data.error || "SMS could not be sent.");
       }
@@ -527,7 +559,7 @@ export default function AdminPage() {
       } else {
         window.alert(detail);
       }
-      await loadRecalls(recallFilter);
+      await Promise.all([loadRecalls(recallFilter), loadSmsCredits()]);
     } catch {
       setSmsFeedback("Could not send bulk SMS.");
       window.alert("Could not send bulk SMS.");
@@ -569,7 +601,7 @@ export default function AdminPage() {
       } else {
         window.alert(detail);
       }
-      await loadRecalls(recallFilter);
+      await Promise.all([loadRecalls(recallFilter), loadSmsCredits()]);
     } catch {
       setSmsFeedback("Could not send SMS to selected entries.");
       window.alert("Could not send SMS to selected entries.");
@@ -646,6 +678,7 @@ export default function AdminPage() {
 
   return (
     <div className="fade-up space-y-6 pb-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <header>
         <p className="brand-mark text-xs font-bold text-[var(--honda-red)]">
           Control panel
@@ -667,6 +700,33 @@ export default function AdminPage() {
           ) : null}
         </p>
       </header>
+      <aside
+        className="panel w-full shrink-0 rounded-2xl px-5 py-4 sm:max-w-xs"
+        aria-live="polite"
+      >
+        <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">
+          Remaining SMS
+        </p>
+        <p className="mt-2 font-[family-name:var(--font-display)] text-4xl tracking-wide text-[var(--ink)]">
+          {smsCreditsLoading
+            ? "…"
+            : smsCredits === null
+              ? "—"
+              : smsCredits.toLocaleString("en-GB")}
+        </p>
+        <p className="mt-1 text-xs text-[var(--muted)]">
+          {smsCreditsError || "Alt-à-Vie account"}
+        </p>
+        <button
+          type="button"
+          className="mt-3 text-sm font-semibold text-[var(--honda-red)] hover:underline disabled:opacity-60"
+          onClick={() => void loadSmsCredits()}
+          disabled={smsCreditsLoading}
+        >
+          {smsCreditsLoading ? "Checking…" : "Refresh"}
+        </button>
+      </aside>
+      </div>
 
       <nav
         className="panel flex flex-wrap gap-2 rounded-2xl p-2"
