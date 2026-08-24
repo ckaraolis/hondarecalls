@@ -137,7 +137,7 @@ function appointmentConfirmationCopy(input: {
     `Car Number: ${input.regNo || "—"}\n` +
     `Recall Number: ${recallLabel}\n` +
     `Description: ${description}\n\n` +
-    `Galatariotis Recall Check`;
+    `Galatariotis Motors LTD`;
   const html = `
     <p>Hello ${escapeHtml(greetingName)},</p>
     <p>Thank you. Your appointment request was submitted successfully.</p>
@@ -147,7 +147,7 @@ function appointmentConfirmationCopy(input: {
       <tr><td><strong>Recall Number</strong></td><td>${escapeHtml(recallLabel)}</td></tr>
       <tr><td><strong>Description</strong></td><td>${escapeHtml(description)}</td></tr>
     </table>
-    <p>Galatariotis Recall Check</p>
+    <p>Galatariotis Motors LTD</p>
   `;
   return { subject, text, html };
 }
