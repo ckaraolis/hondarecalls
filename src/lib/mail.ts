@@ -86,6 +86,65 @@ export async function sendVerificationEmail(input: {
   };
 }
 
+export async function sendPasswordResetEmail(input: {
+  to: string;
+  firstName: string;
+  token: string;
+}) {
+  const resetUrl = `${appBaseUrl()}/reset-password?token=${encodeURIComponent(input.token)}`;
+  const subject = "Reset your Galatariotis Recall Check password";
+  const text =
+    `Hello ${input.firstName},\n\n` +
+    `We received a request to reset your password.\n\n` +
+    `Use this link to choose a new password:\n\n` +
+    `${resetUrl}\n\n` +
+    `This link expires in 1 hour. If you did not request a reset, you can ignore this email.\n\n` +
+    `Galatariotis Recall Check`;
+
+  if (!isSmtpConfigured()) {
+    console.info("[email:dev] Password reset link for", input.to, resetUrl);
+    return {
+      sent: false,
+      previewUrl: resetUrl,
+      message:
+        "SMTP is not configured. Use the reset link shown on screen in development.",
+    };
+  }
+
+  try {
+    await createTransporter().sendMail({
+      from: smtpFromAddress(),
+      to: input.to,
+      subject,
+      text,
+      html: `
+      <p>Hello ${escapeHtml(input.firstName)},</p>
+      <p>We received a request to reset your password.</p>
+      <p><a href="${resetUrl}">${escapeHtml(resetUrl)}</a></p>
+      <p>This link expires in 1 hour. If you did not request a reset, you can ignore this email.</p>
+      <p>Galatariotis Recall Check</p>
+    `,
+    });
+  } catch (error) {
+    const detail =
+      error instanceof Error ? error.message : "Unknown SMTP error.";
+    console.error("[email] Failed to send password reset email:", detail);
+    return {
+      sent: false,
+      previewUrl: resetUrl,
+      message:
+        "Could not send the reset email. Ask IT to check SMTP, or use the link shown if available.",
+    };
+  }
+
+  return {
+    sent: true,
+    previewUrl: null as string | null,
+    message:
+      "If an account exists for that email, a password reset link has been sent.",
+  };
+}
+
 function appointmentInbox() {
   const dedicated = process.env.APPOINTMENT_TO?.trim();
   if (dedicated) return dedicated;

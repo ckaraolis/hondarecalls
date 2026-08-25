@@ -57,6 +57,12 @@ create table if not exists public.email_verification_tokens (
   expires_at timestamptz not null
 );
 
+create table if not exists public.password_reset_tokens (
+  token text primary key,
+  user_id bigint not null references public.users (id) on delete cascade,
+  expires_at timestamptz not null
+);
+
 -- User vehicles
 create table if not exists public.user_vehicles (
   id bigserial primary key,
@@ -110,6 +116,7 @@ alter table public.recalls enable row level security;
 alter table public.settings enable row level security;
 alter table public.users enable row level security;
 alter table public.email_verification_tokens enable row level security;
+alter table public.password_reset_tokens enable row level security;
 alter table public.user_vehicles enable row level security;
 alter table public.notifications enable row level security;
 alter table public.push_subscriptions enable row level security;

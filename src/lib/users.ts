@@ -264,6 +264,84 @@ export async function verifyEmailToken(
   return { ok: true, user };
 }
 
+const GENERIC_RESET_MESSAGE =
+  "If an account exists for that email, a password reset link has been sent.";
+
+export async function requestPasswordReset(
+  email: string,
+): Promise<{ ok: true; token: string | null; message: string }> {
+  const normalized = normalizeEmail(email);
+  if (!normalized || !normalized.includes("@")) {
+    throw new Error("Enter a valid email address.");
+  }
+
+  const user = await findUserByEmail(normalized);
+  if (!user || !user.email_verified) {
+    return { ok: true, token: null, message: GENERIC_RESET_MESSAGE };
+  }
+
+  const supabase = getSupabase();
+  await supabase.from("password_reset_tokens").delete().eq("user_id", user.id);
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60).toISOString();
+  const { error } = await supabase.from("password_reset_tokens").insert({
+    token,
+    user_id: user.id,
+    expires_at: expiresAt,
+  });
+  if (error) throw new Error(error.message);
+
+  return { ok: true, token, message: GENERIC_RESET_MESSAGE };
+}
+
+export async function resetPasswordWithToken(
+  token: string,
+  password: string,
+): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
+  if (!token.trim()) {
+    return { ok: false, error: "Missing reset token." };
+  }
+  if (password.length < 6) {
+    return { ok: false, error: "Password must be at least 6 characters." };
+  }
+
+  const supabase = getSupabase();
+  const { data: row, error } = await supabase
+    .from("password_reset_tokens")
+    .select("token, user_id, expires_at")
+    .eq("token", token.trim())
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!row) {
+    return { ok: false, error: "Invalid or already used reset link." };
+  }
+
+  if (new Date(String(row.expires_at)).getTime() < Date.now()) {
+    await supabase
+      .from("password_reset_tokens")
+      .delete()
+      .eq("token", token.trim());
+    return { ok: false, error: "This reset link has expired." };
+  }
+
+  const userId = Number(row.user_id);
+  const password_hash = hashPassword(password);
+  const { error: updateError } = await supabase
+    .from("users")
+    .update({ password_hash })
+    .eq("id", userId);
+  if (updateError) throw new Error(updateError.message);
+
+  await supabase.from("password_reset_tokens").delete().eq("user_id", userId);
+
+  return {
+    ok: true,
+    message: "Password updated. You can log in with your new password.",
+  };
+}
+
 export function createSessionToken(userId: number) {
   const secret = process.env.SESSION_SECRET || "dev-secret";
   const payload = `user:${userId}`;
