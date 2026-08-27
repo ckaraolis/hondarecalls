@@ -433,6 +433,50 @@ export default function AdminPage() {
     }
   }
 
+  async function deleteSelectedRows() {
+    if (selectedIds.length === 0) {
+      setError("Select one or more entries with the checkboxes first.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete the selected entries?\n\n` +
+        `${selectedIds.length} selected\n\n` +
+        `This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setCampaignBusy(true);
+    setError(null);
+    setMessage(null);
+    setSmsFeedback(null);
+    try {
+      const response = await fetch("/api/admin/recalls", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "Could not delete selected rows.");
+        return;
+      }
+      const detail = data.message || "Selected entries deleted.";
+      setMessage(detail);
+      window.alert(detail);
+      if (editingId !== null && selectedIds.includes(editingId)) {
+        setEditingId(null);
+        setDraft(null);
+      }
+      setSelectedIds([]);
+      await loadRecalls(recallFilter);
+    } catch {
+      setError("Could not delete selected rows.");
+    } finally {
+      setCampaignBusy(false);
+    }
+  }
+
   async function deleteCampaign() {
     if (recallFilter === "all") {
       setError("Select a specific Recall No. campaign to delete.");
@@ -931,7 +975,7 @@ export default function AdminPage() {
               <div>
                 <h2 className="text-xl font-semibold">Recall Campaigns</h2>
                 <p className="mt-1 text-sm text-[var(--muted)]">
-                  Filter by Recall No., tick entries to SMS, edit or delete rows,
+                  Filter by Recall No., tick entries to SMS or delete, edit rows,
                   or remove a whole campaign.
                 </p>
               </div>
@@ -949,6 +993,21 @@ export default function AdminPage() {
                     : selectedIds.length === 0
                       ? "SMS selected"
                       : `SMS selected (${selectedIds.length})`}
+                </button>
+                <button
+                  type="button"
+                  className="btn px-4 py-2 text-sm text-white"
+                  style={{ background: "#9b1c1c" }}
+                  disabled={
+                    bulkSmsBusy || campaignBusy || selectedIds.length === 0
+                  }
+                  onClick={deleteSelectedRows}
+                >
+                  {campaignBusy
+                    ? "Deleting…"
+                    : selectedIds.length === 0
+                      ? "Delete selected"
+                      : `Delete selected (${selectedIds.length})`}
                 </button>
                 <button
                   type="button"

@@ -10,7 +10,7 @@ import {
   pushSupported,
   registerPushServiceWorker,
 } from "@/lib/push-client";
-import { HONDA_VEHICLE_MODELS } from "@/lib/honda-models";
+import { modelsForVehicleType } from "@/lib/honda-models";
 
 type User = {
   id: number;
@@ -851,12 +851,16 @@ export default function AccountPage() {
                   id="vehicle_type"
                   className="input"
                   value={form.vehicle_type}
-                  onChange={(e) =>
-                    updateForm(
-                      "vehicle_type",
-                      e.target.value === "Motorbike" ? "Motorbike" : "Car",
-                    )
-                  }
+                  onChange={(e) => {
+                    const nextType =
+                      e.target.value === "Motorbike" ? "Motorbike" : "Car";
+                    const models = modelsForVehicleType(nextType);
+                    setForm((prev) => ({
+                      ...prev,
+                      vehicle_type: nextType,
+                      model: models.includes(prev.model) ? prev.model : "",
+                    }));
+                  }}
                 >
                   <option value="Car">Car</option>
                   <option value="Motorbike">Motorbike</option>
@@ -876,7 +880,7 @@ export default function AccountPage() {
                   <option value="" disabled>
                     Select model
                   </option>
-                  {HONDA_VEHICLE_MODELS.map((model) => (
+                  {modelsForVehicleType(form.vehicle_type).map((model) => (
                     <option key={model} value={model}>
                       {model}
                     </option>

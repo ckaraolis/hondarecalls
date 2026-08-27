@@ -430,6 +430,19 @@ export async function deleteRecall(id: number): Promise<boolean> {
   return (data?.length ?? 0) > 0;
 }
 
+export async function deleteRecallsByIds(ids: number[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("recalls")
+    .delete()
+    .in("id", ids)
+    .select("id");
+
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
+}
+
 /** Deletes every row for a Recall No. campaign. */
 export async function deleteRecallCampaign(recallNo: string): Promise<{
   deleted: number;

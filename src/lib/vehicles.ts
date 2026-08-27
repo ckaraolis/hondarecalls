@@ -90,7 +90,7 @@ export async function addVehicleForUser(
   const color = input.color.trim();
 
   if (!model) throw new Error("Model is required.");
-  if (!isHondaVehicleModel(model)) {
+  if (!isHondaVehicleModel(model, vehicle_type)) {
     throw new Error("Please choose a model from the list.");
   }
   if (!year) throw new Error("Year is required.");

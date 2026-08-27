@@ -1,5 +1,5 @@
-/** Honda models available when a user adds a vehicle. */
-export const HONDA_VEHICLE_MODELS = [
+/** Honda car models available when a user adds a vehicle. */
+export const HONDA_CAR_MODELS = [
   "Accord",
   "Airwave",
   "Aria",
@@ -46,8 +46,47 @@ export const HONDA_VEHICLE_MODELS = [
   "Other",
 ] as const;
 
-export type HondaVehicleModel = (typeof HONDA_VEHICLE_MODELS)[number];
+/** Honda motorcycle models available when a user adds a Motorbike. */
+export const HONDA_MOTORCYCLE_MODELS = [
+  "Africa Twin",
+  "Transalp 750",
+  "CB650R",
+  "CB750 Hornet",
+  "Forza 350",
+  "ADV350",
+  "SH350i",
+  "PCX125",
+  "Rebel 500",
+  "NT1100",
+  "Other",
+] as const;
 
-export function isHondaVehicleModel(value: string): value is HondaVehicleModel {
-  return (HONDA_VEHICLE_MODELS as readonly string[]).includes(value);
+/** @deprecated Prefer HONDA_CAR_MODELS / modelsForVehicleType */
+export const HONDA_VEHICLE_MODELS = HONDA_CAR_MODELS;
+
+export type HondaVehicleModel =
+  | (typeof HONDA_CAR_MODELS)[number]
+  | (typeof HONDA_MOTORCYCLE_MODELS)[number];
+
+export type VehicleTypeOption = "Car" | "Motorbike";
+
+export function modelsForVehicleType(
+  vehicleType: VehicleTypeOption,
+): readonly string[] {
+  return vehicleType === "Motorbike"
+    ? HONDA_MOTORCYCLE_MODELS
+    : HONDA_CAR_MODELS;
+}
+
+export function isHondaVehicleModel(
+  value: string,
+  vehicleType?: VehicleTypeOption,
+): value is HondaVehicleModel {
+  if (vehicleType) {
+    return modelsForVehicleType(vehicleType).includes(value);
+  }
+  return (
+    (HONDA_CAR_MODELS as readonly string[]).includes(value) ||
+    (HONDA_MOTORCYCLE_MODELS as readonly string[]).includes(value)
+  );
 }
