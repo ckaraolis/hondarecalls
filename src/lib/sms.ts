@@ -176,8 +176,8 @@ export function normalizeMsisdn(phone: string) {
   return n;
 }
 
-function buildRequestId(recallId: number) {
-  return `${Date.now()}${recallId}`;
+function buildRequestId(suffix: string | number) {
+  return `${Date.now()}${suffix}`;
 }
 
 function applyTemplate(template: string, recall: Recall) {
@@ -250,19 +250,19 @@ function isProviderError(status: number, body: string) {
 }
 
 /**
- * Sends a recall SMS via Alt-à-Vie GET API:
- * .../getusms/receive.aspx?id=&msisdn=&sms=&srvno=&provider=Cyta&login=&pwd=
+ * Sends a plain SMS to one normalized MSISDN via Alt-à-Vie GET API.
  */
-export async function sendRecallSms(recall: Recall): Promise<SmsSendResult> {
-  const telephone = recall.telephone.trim();
-  if (!telephone) {
-    return {
-      ok: false,
-      message: "This record has no telephone number.",
-    };
+export async function sendSmsToNumber(
+  telephone: string,
+  message: string,
+  requestSuffix: string | number = "c",
+): Promise<SmsSendResult> {
+  const raw = telephone.trim();
+  if (!raw) {
+    return { ok: false, message: "Telephone number is empty." };
   }
 
-  const msisdn = normalizeMsisdn(telephone);
+  const msisdn = normalizeMsisdn(raw);
   if (!msisdn) {
     return {
       ok: false,
@@ -270,8 +270,12 @@ export async function sendRecallSms(recall: Recall): Promise<SmsSendResult> {
     };
   }
 
-  const text = await buildRecallSmsMessage(recall);
-  const providerId = buildRequestId(recall.id);
+  const text = message.replace(/\s+/g, " ").trim().slice(0, SMS_MAX_LENGTH);
+  if (!text) {
+    return { ok: false, message: "SMS message is empty." };
+  }
+
+  const providerId = buildRequestId(requestSuffix);
 
   if (process.env.ALTAVIE_SMS_DRY_RUN === "true") {
     return {
@@ -340,4 +344,89 @@ export async function sendRecallSms(recall: Recall): Promise<SmsSendResult> {
       length: text.length,
     };
   }
+}
+
+/**
+ * Sends a recall SMS via Alt-à-Vie GET API:
+ * .../getusms/receive.aspx?id=&msisdn=&sms=&srvno=&provider=Cyta&login=&pwd=
+ */
+export async function sendRecallSms(recall: Recall): Promise<SmsSendResult> {
+  const telephone = recall.telephone.trim();
+  if (!telephone) {
+    return {
+      ok: false,
+      message: "This record has no telephone number.",
+    };
+  }
+
+  const text = await buildRecallSmsMessage(recall);
+  return sendSmsToNumber(telephone, text, recall.id);
+}
+
+/** Parse numbers separated by newline, comma, semicolon, or spaces. */
+export function parsePhoneList(raw: string): string[] {
+  const parts = raw
+    .split(/[\n,;]+/)
+    .flatMap((chunk) => chunk.trim().split(/\s+/))
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const phone of parts) {
+    const key = normalizeMsisdn(phone) || phone;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(phone);
+  }
+  return unique;
+}
+
+export async function sendCustomSmsToMany(
+  phones: string[],
+  message: string,
+): Promise<{
+  ok: boolean;
+  total: number;
+  sent: number;
+  failed: number;
+  skippedInvalid: number;
+  failures: { phone: string; message: string }[];
+  preview: string;
+  message: string;
+}> {
+  const text = message.replace(/\s+/g, " ").trim().slice(0, SMS_MAX_LENGTH);
+  const list = phones.map((phone) => phone.trim()).filter(Boolean);
+
+  let sent = 0;
+  let failed = 0;
+  let skippedInvalid = 0;
+  const failures: { phone: string; message: string }[] = [];
+
+  for (let i = 0; i < list.length; i += 1) {
+    const phone = list[i];
+    if (!normalizeMsisdn(phone)) {
+      skippedInvalid += 1;
+      failures.push({ phone, message: "Invalid telephone number." });
+      continue;
+    }
+    const result = await sendSmsToNumber(phone, text, `c${i}`);
+    if (result.ok) {
+      sent += 1;
+    } else {
+      failed += 1;
+      failures.push({ phone, message: result.message });
+    }
+  }
+
+  return {
+    ok: sent > 0 && failed === 0 && skippedInvalid === 0,
+    total: list.length,
+    sent,
+    failed,
+    skippedInvalid,
+    failures: failures.slice(0, 20),
+    preview: text,
+    message: `Custom SMS: sent ${sent}, failed ${failed}, skipped ${skippedInvalid} (invalid).`,
+  };
 }

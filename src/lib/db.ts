@@ -144,6 +144,150 @@ export async function setSmsTemplate(template: string): Promise<string> {
   return trimmed;
 }
 
+export type CustomSmsTemplate = {
+  id: string;
+  name: string;
+  body: string;
+  updated_at: string;
+};
+
+const CUSTOM_SMS_TEMPLATES_KEY = "custom_sms_templates";
+
+function parseCustomSmsTemplates(raw: string | null | undefined): CustomSmsTemplate[] {
+  if (!raw?.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const row = item as Record<string, unknown>;
+        const id = typeof row.id === "string" ? row.id.trim() : "";
+        const name = typeof row.name === "string" ? row.name.trim() : "";
+        const body = typeof row.body === "string" ? row.body.trim() : "";
+        const updated_at =
+          typeof row.updated_at === "string" ? row.updated_at : "";
+        if (!id || !name || !body) return null;
+        return { id, name, body, updated_at };
+      })
+      .filter((item): item is CustomSmsTemplate => item !== null);
+  } catch {
+    return [];
+  }
+}
+
+export async function listCustomSmsTemplates(): Promise<CustomSmsTemplate[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", CUSTOM_SMS_TEMPLATES_KEY)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return parseCustomSmsTemplates(
+    data?.value == null ? null : String(data.value),
+  ).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function saveCustomSmsTemplatesList(
+  templates: CustomSmsTemplate[],
+): Promise<CustomSmsTemplate[]> {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("settings").upsert({
+    key: CUSTOM_SMS_TEMPLATES_KEY,
+    value: JSON.stringify(templates),
+  });
+  if (error) throw new Error(error.message);
+  return templates.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function createCustomSmsTemplate(input: {
+  name: string;
+  body: string;
+}): Promise<CustomSmsTemplate> {
+  const name = input.name.trim();
+  const body = input.body.trim();
+  if (!name) throw new Error("Template name is required.");
+  if (!body) throw new Error("Template message is required.");
+  if (body.length > SMS_MAX_LENGTH) {
+    throw new Error(`SMS template must be ${SMS_MAX_LENGTH} characters or less.`);
+  }
+
+  const templates = await listCustomSmsTemplates();
+  if (
+    templates.some((item) => item.name.toLowerCase() === name.toLowerCase())
+  ) {
+    throw new Error("A template with this name already exists.");
+  }
+
+  const created: CustomSmsTemplate = {
+    id: randomId(),
+    name,
+    body,
+    updated_at: new Date().toISOString(),
+  };
+  await saveCustomSmsTemplatesList([...templates, created]);
+  return created;
+}
+
+export async function updateCustomSmsTemplate(input: {
+  id: string;
+  name?: string;
+  body?: string;
+}): Promise<CustomSmsTemplate> {
+  const id = input.id.trim();
+  if (!id) throw new Error("Template id is required.");
+
+  const templates = await listCustomSmsTemplates();
+  const index = templates.findIndex((item) => item.id === id);
+  if (index < 0) throw new Error("Template not found.");
+
+  const name =
+    typeof input.name === "string" ? input.name.trim() : templates[index].name;
+  const body =
+    typeof input.body === "string" ? input.body.trim() : templates[index].body;
+
+  if (!name) throw new Error("Template name is required.");
+  if (!body) throw new Error("Template message is required.");
+  if (body.length > SMS_MAX_LENGTH) {
+    throw new Error(`SMS template must be ${SMS_MAX_LENGTH} characters or less.`);
+  }
+  if (
+    templates.some(
+      (item) =>
+        item.id !== id && item.name.toLowerCase() === name.toLowerCase(),
+    )
+  ) {
+    throw new Error("A template with this name already exists.");
+  }
+
+  const updated: CustomSmsTemplate = {
+    ...templates[index],
+    name,
+    body,
+    updated_at: new Date().toISOString(),
+  };
+  const next = [...templates];
+  next[index] = updated;
+  await saveCustomSmsTemplatesList(next);
+  return updated;
+}
+
+export async function deleteCustomSmsTemplate(id: string): Promise<boolean> {
+  const trimmed = id.trim();
+  if (!trimmed) throw new Error("Template id is required.");
+  const templates = await listCustomSmsTemplates();
+  const next = templates.filter((item) => item.id !== trimmed);
+  if (next.length === templates.length) return false;
+  await saveCustomSmsTemplatesList(next);
+  return true;
+}
+
+function randomId() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export async function searchRecalls(query: string): Promise<PublicRecall[]> {
   const q = normalize(query);
   if (!q) return [];

@@ -25,7 +25,14 @@ type RecallGroup = {
   count: number;
 };
 
-type MainSection = "overview" | "upload" | "campaigns" | "sms";
+type CustomSmsTemplate = {
+  id: string;
+  name: string;
+  body: string;
+  updated_at: string;
+};
+
+type MainSection = "overview" | "upload" | "campaigns" | "sms" | "custom-sms";
 
 const SMS_MAX_LENGTH = 160;
 
@@ -34,6 +41,7 @@ const MAIN_TABS: { id: MainSection; label: string; hint: string }[] = [
   { id: "upload", label: "Upload", hint: "Excel import" },
   { id: "campaigns", label: "Recall Campaigns", hint: "Edit & manage" },
   { id: "sms", label: "SMS", hint: "Template & send" },
+  { id: "custom-sms", label: "Custom SMS", hint: "Any numbers" },
 ];
 
 function StatusPill({
@@ -90,6 +98,19 @@ export default function AdminPage() {
   );
   const [smsTemplateError, setSmsTemplateError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [customSmsPhones, setCustomSmsPhones] = useState("");
+  const [customSmsMessage, setCustomSmsMessage] = useState("");
+  const [customSmsBusy, setCustomSmsBusy] = useState(false);
+  const [customSmsFeedback, setCustomSmsFeedback] = useState<string | null>(
+    null,
+  );
+  const [customSmsError, setCustomSmsError] = useState<string | null>(null);
+  const [customSmsTemplates, setCustomSmsTemplates] = useState<
+    CustomSmsTemplate[]
+  >([]);
+  const [customSmsTemplateId, setCustomSmsTemplateId] = useState("");
+  const [customSmsTemplateName, setCustomSmsTemplateName] = useState("");
+  const [customSmsTemplateBusy, setCustomSmsTemplateBusy] = useState(false);
   const [smsCredits, setSmsCredits] = useState<number | null>(null);
   const [smsCreditsLoading, setSmsCreditsLoading] = useState(false);
   const [smsCreditsError, setSmsCreditsError] = useState<string | null>(null);
@@ -150,6 +171,17 @@ export default function AdminPage() {
     setSmsTemplate(data.template ?? "");
   }, []);
 
+  const loadCustomSmsTemplates = useCallback(async () => {
+    const response = await fetch("/api/admin/sms/custom-templates");
+    if (response.status === 401) {
+      setAuthed(false);
+      return;
+    }
+    if (!response.ok) return;
+    const data = await response.json();
+    setCustomSmsTemplates((data.templates ?? []) as CustomSmsTemplate[]);
+  }, []);
+
   const loadRecalls = useCallback(
     async (recallNo = recallFilter) => {
       const query =
@@ -178,10 +210,15 @@ export default function AdminPage() {
   );
 
   useEffect(() => {
-    Promise.all([loadRecalls(), loadSmsTemplate(), loadSmsCredits()])
+    Promise.all([
+      loadRecalls(),
+      loadSmsTemplate(),
+      loadCustomSmsTemplates(),
+      loadSmsCredits(),
+    ])
       .catch(() => setAuthed(false))
       .finally(() => setChecking(false));
-  }, [loadRecalls, loadSmsTemplate, loadSmsCredits]);
+  }, [loadRecalls, loadSmsTemplate, loadCustomSmsTemplates, loadSmsCredits]);
 
   useEffect(() => {
     function onAdminAuthChanged() {
@@ -236,7 +273,12 @@ export default function AdminPage() {
       );
       setRecallFilter("all");
       setMainSection("overview");
-      await Promise.all([loadRecalls("all"), loadSmsTemplate(), loadSmsCredits()]);
+      await Promise.all([
+        loadRecalls("all"),
+        loadSmsTemplate(),
+        loadCustomSmsTemplates(),
+        loadSmsCredits(),
+      ]);
       window.dispatchEvent(new Event("admin-auth-changed"));
     } catch {
       setLoginError("Could not reach the server.");
@@ -654,6 +696,162 @@ export default function AdminPage() {
     }
   }
 
+  async function sendCustomSms() {
+    const phones = customSmsPhones.trim();
+    const text = customSmsMessage.trim();
+    if (!phones) {
+      setCustomSmsError("Enter at least one mobile number.");
+      return;
+    }
+    if (!text) {
+      setCustomSmsError("Enter the SMS message to send.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Send this SMS to the entered numbers?\n\n` +
+        `Message (${text.length}/${SMS_MAX_LENGTH}):\n${text}`,
+    );
+    if (!confirmed) return;
+
+    setCustomSmsBusy(true);
+    setCustomSmsError(null);
+    setCustomSmsFeedback(null);
+    setMessage(null);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/sms/custom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phones, message: text }),
+      });
+      const data = await response.json();
+      const detailParts = [
+        data.message || data.error || "Custom SMS finished.",
+        Array.isArray(data.failures) && data.failures.length
+          ? data.failures
+              .slice(0, 10)
+              .map(
+                (item: { phone: string; message: string }) =>
+                  `${item.phone}: ${item.message}`,
+              )
+              .join("\n")
+          : "",
+      ].filter(Boolean);
+      const detail = detailParts.join("\n\n");
+      setCustomSmsFeedback(detail);
+      if (response.ok || data.sent > 0) {
+        setMessage(data.message || detail);
+        window.alert(data.message || detail);
+        void loadSmsCredits();
+      } else {
+        setCustomSmsError(data.error || detail);
+        window.alert(data.error || detail);
+      }
+    } catch {
+      setCustomSmsError("Could not send custom SMS.");
+      window.alert("Could not send custom SMS.");
+    } finally {
+      setCustomSmsBusy(false);
+    }
+  }
+
+  function applyCustomSmsTemplate(id: string) {
+    setCustomSmsTemplateId(id);
+    if (!id) {
+      setCustomSmsTemplateName("");
+      return;
+    }
+    const selected = customSmsTemplates.find((item) => item.id === id);
+    if (!selected) return;
+    setCustomSmsTemplateName(selected.name);
+    setCustomSmsMessage(selected.body.slice(0, SMS_MAX_LENGTH));
+    setCustomSmsError(null);
+  }
+
+  async function saveCustomSmsTemplate() {
+    const name = customSmsTemplateName.trim();
+    const body = customSmsMessage.trim();
+    if (!name) {
+      setCustomSmsError("Enter a template name before saving.");
+      return;
+    }
+    if (!body) {
+      setCustomSmsError("Enter a message before saving the template.");
+      return;
+    }
+
+    setCustomSmsTemplateBusy(true);
+    setCustomSmsError(null);
+    setCustomSmsFeedback(null);
+    try {
+      const updating = Boolean(customSmsTemplateId);
+      const response = await fetch("/api/admin/sms/custom-templates", {
+        method: updating ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          updating
+            ? { id: customSmsTemplateId, name, body }
+            : { name, body },
+        ),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setCustomSmsError(data.error || "Could not save template.");
+        return;
+      }
+      await loadCustomSmsTemplates();
+      if (data.template?.id) {
+        setCustomSmsTemplateId(String(data.template.id));
+        setCustomSmsTemplateName(String(data.template.name ?? name));
+        setCustomSmsMessage(String(data.template.body ?? body));
+      }
+      setCustomSmsFeedback(data.message || "Template saved.");
+    } catch {
+      setCustomSmsError("Could not save template.");
+    } finally {
+      setCustomSmsTemplateBusy(false);
+    }
+  }
+
+  async function deleteCustomSmsTemplate() {
+    if (!customSmsTemplateId) {
+      setCustomSmsError("Choose a saved template to delete.");
+      return;
+    }
+    const selected = customSmsTemplates.find(
+      (item) => item.id === customSmsTemplateId,
+    );
+    const confirmed = window.confirm(
+      `Delete template "${selected?.name || "selected"}"?`,
+    );
+    if (!confirmed) return;
+
+    setCustomSmsTemplateBusy(true);
+    setCustomSmsError(null);
+    setCustomSmsFeedback(null);
+    try {
+      const response = await fetch("/api/admin/sms/custom-templates", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: customSmsTemplateId }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setCustomSmsError(data.error || "Could not delete template.");
+        return;
+      }
+      setCustomSmsTemplateId("");
+      setCustomSmsTemplateName("");
+      await loadCustomSmsTemplates();
+      setCustomSmsFeedback(data.message || "Template deleted.");
+    } catch {
+      setCustomSmsError("Could not delete template.");
+    } finally {
+      setCustomSmsTemplateBusy(false);
+    }
+  }
+
   if (checking) {
     return (
       <div className="fade-up flex flex-1 items-center justify-center py-20">
@@ -865,6 +1063,16 @@ export default function AdminPage() {
                 <p className="font-bold">SMS tools</p>
                 <p className="mt-1 text-sm text-[var(--muted)]">
                   Edit template and notify owners
+                </p>
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-[var(--line)] bg-white p-4 text-left transition hover:border-[var(--honda-red)]"
+                onClick={() => setMainSection("custom-sms")}
+              >
+                <p className="font-bold">Custom SMS</p>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  Same message to any numbers
                 </p>
               </button>
             </div>
@@ -1525,6 +1733,147 @@ export default function AdminPage() {
                 {smsFeedback}
               </p>
             )}
+          </div>
+        </section>
+      )}
+
+      {mainSection === "custom-sms" && (
+        <section className="space-y-4" role="tabpanel">
+          <div className="panel rounded-2xl p-6 sm:p-7">
+            <h2 className="text-xl font-semibold">Custom SMS</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              Send the same message to one or more mobile numbers. Numbers are
+              not taken from the recall list — paste or type them below
+              (one per line, or separated by commas).
+            </p>
+
+            <div className="mt-5 space-y-4">
+              <div className="rounded-xl border border-[var(--line)] bg-[#f7f9fc] p-4">
+                <p className="text-sm font-semibold text-[var(--ink)]">
+                  Saved templates
+                </p>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  Choose a saved message, or save the current message as a new
+                  template.
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <select
+                    className="input"
+                    value={customSmsTemplateId}
+                    onChange={(e) => applyCustomSmsTemplate(e.target.value)}
+                    aria-label="Choose custom SMS template"
+                  >
+                    <option value="">New message / choose template</option>
+                    {customSmsTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-secondary px-4 py-2 text-sm"
+                    disabled={customSmsTemplateBusy || !customSmsTemplateId}
+                    onClick={() => void deleteCustomSmsTemplate()}
+                  >
+                    Delete
+                  </button>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <input
+                    className="input"
+                    value={customSmsTemplateName}
+                    onChange={(e) => setCustomSmsTemplateName(e.target.value)}
+                    placeholder="Template name"
+                    aria-label="Custom SMS template name"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary px-4 py-2 text-sm"
+                    disabled={
+                      customSmsTemplateBusy ||
+                      !customSmsTemplateName.trim() ||
+                      !customSmsMessage.trim()
+                    }
+                    onClick={() => void saveCustomSmsTemplate()}
+                  >
+                    {customSmsTemplateBusy
+                      ? "Saving…"
+                      : customSmsTemplateId
+                        ? "Update template"
+                        : "Save template"}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label
+                  className="mb-1 block text-sm font-semibold"
+                  htmlFor="custom_sms_phones"
+                >
+                  Mobile numbers
+                </label>
+                <textarea
+                  id="custom_sms_phones"
+                  className="input min-h-36 resize-y font-mono text-sm"
+                  value={customSmsPhones}
+                  onChange={(e) => setCustomSmsPhones(e.target.value)}
+                  placeholder={"99123456\n99765432\n+35799111222"}
+                />
+              </div>
+
+              <div>
+                <label
+                  className="mb-1 block text-sm font-semibold"
+                  htmlFor="custom_sms_message"
+                >
+                  Message
+                </label>
+                <textarea
+                  id="custom_sms_message"
+                  className="input min-h-28 resize-y"
+                  value={customSmsMessage}
+                  maxLength={SMS_MAX_LENGTH}
+                  onChange={(e) =>
+                    setCustomSmsMessage(e.target.value.slice(0, SMS_MAX_LENGTH))
+                  }
+                  placeholder="Type the SMS text to send to all numbers above."
+                />
+                <p
+                  className={`mt-2 text-sm font-semibold ${
+                    customSmsMessage.length >= SMS_MAX_LENGTH
+                      ? "text-[var(--honda-red)]"
+                      : "text-[var(--muted)]"
+                  }`}
+                >
+                  {customSmsMessage.length} / {SMS_MAX_LENGTH} characters
+                </p>
+              </div>
+
+              {customSmsError && (
+                <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {customSmsError}
+                </p>
+              )}
+              {customSmsFeedback && (
+                <p className="whitespace-pre-wrap rounded-xl border border-[var(--line)] bg-[#f7f9fc] px-4 py-3 text-sm text-[var(--ink)]">
+                  {customSmsFeedback}
+                </p>
+              )}
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={
+                  customSmsBusy ||
+                  !customSmsPhones.trim() ||
+                  !customSmsMessage.trim()
+                }
+                onClick={sendCustomSms}
+              >
+                {customSmsBusy ? "Sending…" : "Send SMS"}
+              </button>
+            </div>
           </div>
         </section>
       )}
