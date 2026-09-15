@@ -33,11 +33,14 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=honda
+SMS_OPERATOR_USERNAME=Nicolas
+SMS_OPERATOR_PASSWORD=Honda.123
 SESSION_SECRET=change-me-to-a-long-random-string
 APP_URL=http://localhost:3000
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
+`Nicolas` can sign in at `/admin` with access to the Custom SMS tab only.
 Also set SMS / SMTP / VAPID as needed (see below). Never commit `.env.local`.
 
 ## Deploy: GitHub → Vercel

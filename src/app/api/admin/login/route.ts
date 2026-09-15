@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSession, verifyCredentials } from "@/lib/auth";
+import {
+  createSession,
+  getAdminSession,
+  verifyCredentials,
+} from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -15,6 +19,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await createSession(username.trim());
-  return NextResponse.json({ ok: true, username: username.trim() });
+  await createSession(username);
+  const session = await getAdminSession();
+
+  return NextResponse.json({
+    ok: true,
+    username: session?.username ?? username.trim(),
+    permissions: session?.permissions ?? [],
+  });
 }

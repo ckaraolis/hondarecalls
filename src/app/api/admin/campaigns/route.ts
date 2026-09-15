@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { requireAdminPermission } from "@/lib/auth";
 import { deleteRecallCampaign } from "@/lib/db";
 
 export const runtime = "nodejs";
 
 export async function DELETE(request: NextRequest) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  const access = await requireAdminPermission("full");
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.status === 401 ? "Unauthorized." : "Forbidden." },
+      { status: access.status },
+    );
   }
 
   const body = await request.json().catch(() => null);

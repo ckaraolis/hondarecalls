@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { requireAdminPermission } from "@/lib/auth";
 import {
   SMS_MAX_LENGTH,
   createCustomSmsTemplate,
@@ -11,8 +11,12 @@ import {
 export const runtime = "nodejs";
 
 export async function GET() {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  const access = await requireAdminPermission("custom-sms");
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.status === 401 ? "Unauthorized." : "Forbidden." },
+      { status: access.status },
+    );
   }
 
   const templates = await listCustomSmsTemplates();
@@ -20,8 +24,12 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  const access = await requireAdminPermission("custom-sms");
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.status === 401 ? "Unauthorized." : "Forbidden." },
+      { status: access.status },
+    );
   }
 
   const body = await request.json().catch(() => null);
@@ -43,8 +51,12 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  const access = await requireAdminPermission("custom-sms");
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.status === 401 ? "Unauthorized." : "Forbidden." },
+      { status: access.status },
+    );
   }
 
   const body = await request.json().catch(() => null);
@@ -71,8 +83,12 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  const access = await requireAdminPermission("custom-sms");
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.status === 401 ? "Unauthorized." : "Forbidden." },
+      { status: access.status },
+    );
   }
 
   const body = await request.json().catch(() => null);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { requireAdminPermission } from "@/lib/auth";
 import {
   listRecallsByIds,
   listRecallsByRecallNo,
@@ -49,8 +49,12 @@ async function sendToRows(rows: Recall[], label: string) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  const access = await requireAdminPermission("full");
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.status === 401 ? "Unauthorized." : "Forbidden." },
+      { status: access.status },
+    );
   }
 
   const body = await request.json().catch(() => null);

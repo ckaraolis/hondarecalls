@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { requireAdminPermission } from "@/lib/auth";
 import { deleteRecall, updateRecall } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -77,8 +77,12 @@ function readRecallBody(body: Record<string, unknown> | null) {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  const access = await requireAdminPermission("full");
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.status === 401 ? "Unauthorized." : "Forbidden." },
+      { status: access.status },
+    );
   }
 
   const id = parseId((await context.params).id);
@@ -107,8 +111,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(_request: NextRequest, context: RouteContext) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  const access = await requireAdminPermission("full");
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.status === 401 ? "Unauthorized." : "Forbidden." },
+      { status: access.status },
+    );
   }
 
   const id = parseId((await context.params).id);

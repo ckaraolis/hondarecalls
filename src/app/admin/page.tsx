@@ -74,6 +74,7 @@ export default function AdminPage() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
   const [adminUsername, setAdminUsername] = useState<string | null>(null);
+  const [adminPermissions, setAdminPermissions] = useState<string[]>([]);
 
   const [mainSection, setMainSection] = useState<MainSection>("overview");
   const [file, setFile] = useState<File | null>(null);
@@ -114,6 +115,14 @@ export default function AdminPage() {
   const [smsCredits, setSmsCredits] = useState<number | null>(null);
   const [smsCreditsLoading, setSmsCreditsLoading] = useState(false);
   const [smsCreditsError, setSmsCreditsError] = useState<string | null>(null);
+
+  const canFullAdmin = adminPermissions.includes("full");
+  const canCustomSms =
+    canFullAdmin || adminPermissions.includes("custom-sms");
+  const visibleTabs = MAIN_TABS.filter((tab) => {
+    if (canFullAdmin) return true;
+    return tab.id === "custom-sms" && canCustomSms;
+  });
 
   const stats = useMemo(() => {
     const done = rows.filter((r) => r.done).length;
@@ -192,64 +201,79 @@ export default function AdminPage() {
       if (response.status === 401) {
         setAuthed(false);
         setAdminUsername(null);
+        setAdminPermissions([]);
+        return;
+      }
+      if (response.status === 403) {
         return;
       }
       const data = await response.json();
       setCount(data.count ?? 0);
       setGroups(data.groups ?? []);
       setRows(data.rows ?? []);
-      setAuthed(true);
-
-      const sessionResponse = await fetch("/api/admin/session");
-      const session = await sessionResponse.json().catch(() => null);
-      if (session?.authenticated) {
-        setAdminUsername(String(session.username ?? "admin"));
-      }
     },
     [recallFilter],
   );
 
-  useEffect(() => {
-    Promise.all([
+  const bootstrapAdmin = useCallback(async () => {
+    const sessionResponse = await fetch("/api/admin/session");
+    const session = await sessionResponse.json().catch(() => null);
+    if (!session?.authenticated) {
+      setAuthed(false);
+      setAdminUsername(null);
+      setAdminPermissions([]);
+      return;
+    }
+
+    const permissions = Array.isArray(session.permissions)
+      ? (session.permissions as string[])
+      : [];
+    const username = String(session.username ?? "admin");
+    const isFull = permissions.includes("full");
+
+    setAuthed(true);
+    setAdminUsername(username);
+    setAdminPermissions(permissions);
+
+    if (!isFull) {
+      setMainSection("custom-sms");
+      await Promise.all([loadCustomSmsTemplates(), loadSmsCredits()]);
+      return;
+    }
+
+    await Promise.all([
       loadRecalls(),
       loadSmsTemplate(),
       loadCustomSmsTemplates(),
       loadSmsCredits(),
-    ])
+    ]);
+  }, [
+    loadCustomSmsTemplates,
+    loadRecalls,
+    loadSmsCredits,
+    loadSmsTemplate,
+  ]);
+
+  useEffect(() => {
+    bootstrapAdmin()
       .catch(() => setAuthed(false))
       .finally(() => setChecking(false));
-  }, [loadRecalls, loadSmsTemplate, loadCustomSmsTemplates, loadSmsCredits]);
+  }, [bootstrapAdmin]);
 
   useEffect(() => {
     function onAdminAuthChanged() {
-      void fetch("/api/admin/session")
-        .then(async (response) => {
-          const data = await response.json().catch(() => null);
-          if (!data?.authenticated) {
-            setAuthed(false);
-            setAdminUsername(null);
-            setRows([]);
-            setGroups([]);
-            setCount(0);
-            setSelectedIds([]);
-            setSmsCredits(null);
-            setSmsCreditsError(null);
-            return;
-          }
-          setAdminUsername(String(data.username ?? "admin"));
-          await Promise.all([loadRecalls(), loadSmsCredits()]);
-        })
-        .catch(() => {
-          setAuthed(false);
-          setAdminUsername(null);
-        });
+      void bootstrapAdmin().catch(() => {
+        setAuthed(false);
+        setAdminUsername(null);
+        setAdminPermissions([]);
+      });
     }
 
     window.addEventListener("admin-auth-changed", onAdminAuthChanged);
     return () => {
       window.removeEventListener("admin-auth-changed", onAdminAuthChanged);
     };
-  }, [loadRecalls, loadSmsCredits]);
+  }, [bootstrapAdmin]);
 
   async function onLogin(event: FormEvent) {
     event.preventDefault();
@@ -268,17 +292,8 @@ export default function AdminPage() {
         return;
       }
       setPassword("");
-      setAdminUsername(
-        typeof data.username === "string" ? data.username : username.trim(),
-      );
       setRecallFilter("all");
-      setMainSection("overview");
-      await Promise.all([
-        loadRecalls("all"),
-        loadSmsTemplate(),
-        loadCustomSmsTemplates(),
-        loadSmsCredits(),
-      ]);
+      await bootstrapAdmin();
       window.dispatchEvent(new Event("admin-auth-changed"));
     } catch {
       setLoginError("Could not reach the server.");
@@ -937,6 +952,7 @@ export default function AdminPage() {
               <span className="font-semibold text-[var(--ink)]">
                 {adminUsername}
               </span>
+              {canFullAdmin ? "" : " (Custom SMS only)"}
               .
             </>
           ) : null}
@@ -975,7 +991,7 @@ export default function AdminPage() {
         role="tablist"
         aria-label="Admin sections"
       >
-        {MAIN_TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const active = mainSection === tab.id;
           return (
             <button
@@ -1003,7 +1019,7 @@ export default function AdminPage() {
         })}
       </nav>
 
-      {mainSection === "overview" && (
+      {canFullAdmin && mainSection === "overview" && (
         <section className="space-y-5" role="tabpanel">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
@@ -1102,7 +1118,7 @@ export default function AdminPage() {
         </section>
       )}
 
-      {mainSection === "upload" && (
+      {canFullAdmin && mainSection === "upload" && (
         <section className="panel space-y-5 rounded-2xl p-6 sm:p-7" role="tabpanel">
           <div>
             <h2 className="text-xl font-semibold">Upload Excel</h2>
@@ -1176,7 +1192,7 @@ export default function AdminPage() {
         </section>
       )}
 
-      {mainSection === "campaigns" && (
+      {canFullAdmin && mainSection === "campaigns" && (
         <section className="space-y-4" role="tabpanel">
           <div className="panel rounded-2xl p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1624,7 +1640,7 @@ export default function AdminPage() {
         </section>
       )}
 
-      {mainSection === "sms" && (
+      {canFullAdmin && mainSection === "sms" && (
         <section className="space-y-4" role="tabpanel">
           <div className="panel rounded-2xl p-6 sm:p-7">
             <h2 className="text-xl font-semibold">SMS template</h2>
@@ -1737,7 +1753,7 @@ export default function AdminPage() {
         </section>
       )}
 
-      {mainSection === "custom-sms" && (
+      {canCustomSms && mainSection === "custom-sms" && (
         <section className="space-y-4" role="tabpanel">
           <div className="panel rounded-2xl p-6 sm:p-7">
             <h2 className="text-xl font-semibold">Custom SMS</h2>

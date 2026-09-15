@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { requireAdminPermission } from "@/lib/auth";
 import { upsertRecalls } from "@/lib/db";
 import { parseRecallsExcel } from "@/lib/excel";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  const access = await requireAdminPermission("full");
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.status === 401 ? "Unauthorized." : "Forbidden." },
+      { status: access.status },
+    );
   }
 
   const formData = await request.formData();
