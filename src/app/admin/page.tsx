@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 type Recall = {
   id: number;
@@ -99,7 +99,8 @@ export default function AdminPage() {
   );
   const [smsTemplateError, setSmsTemplateError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [customSmsPhones, setCustomSmsPhones] = useState("");
+  const [customSmsPhones, setCustomSmsPhones] = useState<string[]>([]);
+  const [customSmsPhoneDraft, setCustomSmsPhoneDraft] = useState("");
   const [customSmsMessage, setCustomSmsMessage] = useState("");
   const [customSmsBusy, setCustomSmsBusy] = useState(false);
   const [customSmsFeedback, setCustomSmsFeedback] = useState<string | null>(
@@ -711,10 +712,47 @@ export default function AdminPage() {
     }
   }
 
+  function addCustomSmsPhones(raw: string) {
+    const parts = raw
+      .split(/[\n,;]+/)
+      .flatMap((chunk) => chunk.trim().split(/\s+/))
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (parts.length === 0) return;
+
+    setCustomSmsPhones((prev) => {
+      const next = [...prev];
+      const seen = new Set(prev.map((phone) => phone.replace(/\s+/g, "")));
+      for (const phone of parts) {
+        const key = phone.replace(/\s+/g, "");
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push(phone);
+      }
+      return next;
+    });
+    setCustomSmsPhoneDraft("");
+    setCustomSmsError(null);
+  }
+
+  function onCustomSmsPhoneKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    addCustomSmsPhones(customSmsPhoneDraft);
+  }
+
+  function removeCustomSmsPhone(index: number) {
+    setCustomSmsPhones((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function sendCustomSms() {
-    const phones = customSmsPhones.trim();
+    const phones = customSmsPhones;
+    const pendingDraft = customSmsPhoneDraft.trim();
+    const allPhones = pendingDraft
+      ? [...phones, ...pendingDraft.split(/[\n,;]+/).map((p) => p.trim()).filter(Boolean)]
+      : phones;
     const text = customSmsMessage.trim();
-    if (!phones) {
+    if (allPhones.length === 0) {
       setCustomSmsError("Enter at least one mobile number.");
       return;
     }
@@ -724,7 +762,7 @@ export default function AdminPage() {
     }
 
     const confirmed = window.confirm(
-      `Send this SMS to the entered numbers?\n\n` +
+      `Send this SMS to ${allPhones.length} number${allPhones.length === 1 ? "" : "s"}?\n\n` +
         `Message (${text.length}/${SMS_MAX_LENGTH}):\n${text}`,
     );
     if (!confirmed) return;
@@ -738,7 +776,7 @@ export default function AdminPage() {
       const response = await fetch("/api/admin/sms/custom", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phones, message: text }),
+        body: JSON.stringify({ phones: allPhones, message: text }),
       });
       const data = await response.json();
       const detailParts = [
@@ -758,6 +796,7 @@ export default function AdminPage() {
       if (response.ok || data.sent > 0) {
         setMessage(data.message || detail);
         window.alert(data.message || detail);
+        setCustomSmsPhoneDraft("");
         void loadSmsCredits();
       } else {
         setCustomSmsError(data.error || detail);
@@ -1759,8 +1798,8 @@ export default function AdminPage() {
             <h2 className="text-xl font-semibold">Custom SMS</h2>
             <p className="mt-1 text-sm text-[var(--muted)]">
               Send the same message to one or more mobile numbers. Numbers are
-              not taken from the recall list — paste or type them below
-              (one per line, or separated by commas).
+              not taken from the recall list — add them one by one with Enter,
+              or paste a list.
             </p>
 
             <div className="mt-5 space-y-4">
@@ -1825,17 +1864,66 @@ export default function AdminPage() {
               <div>
                 <label
                   className="mb-1 block text-sm font-semibold"
-                  htmlFor="custom_sms_phones"
+                  htmlFor="custom_sms_phone_draft"
                 >
                   Mobile numbers
                 </label>
-                <textarea
-                  id="custom_sms_phones"
-                  className="input min-h-36 resize-y font-mono text-sm"
-                  value={customSmsPhones}
-                  onChange={(e) => setCustomSmsPhones(e.target.value)}
-                  placeholder={"99123456\n99765432\n+35799111222"}
-                />
+                <p className="mb-2 text-sm text-[var(--muted)]">
+                  Type one number and press Enter to add the next on a new line.
+                  You can also paste several numbers at once.
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    id="custom_sms_phone_draft"
+                    className="input font-mono text-sm"
+                    value={customSmsPhoneDraft}
+                    onChange={(e) => setCustomSmsPhoneDraft(e.target.value)}
+                    onKeyDown={onCustomSmsPhoneKeyDown}
+                    onPaste={(e) => {
+                      const pasted = e.clipboardData.getData("text");
+                      if (/[\n,;]/.test(pasted)) {
+                        e.preventDefault();
+                        addCustomSmsPhones(pasted);
+                      }
+                    }}
+                    placeholder="e.g. 99123456"
+                    inputMode="tel"
+                    autoComplete="tel"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary shrink-0 px-4 py-2 text-sm"
+                    disabled={!customSmsPhoneDraft.trim()}
+                    onClick={() => addCustomSmsPhones(customSmsPhoneDraft)}
+                  >
+                    Add number
+                  </button>
+                </div>
+                {customSmsPhones.length > 0 && (
+                  <ul className="mt-3 space-y-1 rounded-xl border border-[var(--line)] bg-white p-3">
+                    {customSmsPhones.map((phone, index) => (
+                      <li
+                        key={`${phone}-${index}`}
+                        className="flex items-center justify-between gap-3 border-b border-[var(--line)] py-2 text-sm last:border-b-0 last:pb-0 first:pt-0"
+                      >
+                        <span className="font-mono font-semibold text-[var(--ink)]">
+                          {index + 1}. {phone}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-[var(--honda-red)] hover:underline"
+                          onClick={() => removeCustomSmsPhone(index)}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  {customSmsPhones.length} number
+                  {customSmsPhones.length === 1 ? "" : "s"} added
+                </p>
               </div>
 
               <div>
@@ -1882,7 +1970,8 @@ export default function AdminPage() {
                 className="btn btn-primary"
                 disabled={
                   customSmsBusy ||
-                  !customSmsPhones.trim() ||
+                  (customSmsPhones.length === 0 &&
+                    !customSmsPhoneDraft.trim()) ||
                   !customSmsMessage.trim()
                 }
                 onClick={sendCustomSms}
