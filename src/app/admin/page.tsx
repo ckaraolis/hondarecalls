@@ -132,11 +132,17 @@ export default function AdminPage() {
     const selectedWithPhone = rows.filter(
       (r) => selectedIds.includes(r.id) && r.telephone.trim(),
     ).length;
+    const smsUnsent = rows.filter((r) => !r.sms_sent).length;
+    const smsUnsentWithPhone = rows.filter(
+      (r) => !r.sms_sent && r.telephone.trim(),
+    ).length;
     return {
       total: count,
       campaigns: groups.length,
       doneInView: done,
       smsSentInView: smsSent,
+      smsUnsentInView: smsUnsent,
+      smsUnsentWithPhone,
       withPhoneInView: withPhone,
       selectedCount: selectedIds.length,
       selectedWithPhone,
@@ -665,6 +671,48 @@ export default function AdminPage() {
     } catch {
       setSmsFeedback("Could not send bulk SMS.");
       window.alert("Could not send bulk SMS.");
+    } finally {
+      setBulkSmsBusy(false);
+    }
+  }
+
+  async function sendUnsentSms() {
+    const scope =
+      recallFilter === "all" ? "all campaigns" : `campaign "${recallFilter}"`;
+    const confirmed = window.confirm(
+      `Send SMS only to entries that have not been sent yet?\n\n` +
+        `Scope: ${scope}\n` +
+        `${stats.smsUnsentInView} not sent yet\n` +
+        `${stats.smsUnsentWithPhone} with a telephone number`,
+    );
+    if (!confirmed) return;
+
+    setBulkSmsBusy(true);
+    setSmsFeedback(null);
+    setMessage(null);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/sms/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recallNo: recallFilter,
+          unsentOnly: true,
+        }),
+      });
+      const data = await response.json();
+      const detail = data.message || data.error || "Unsent SMS finished.";
+      setSmsFeedback(detail);
+      if (response.ok || data.sent > 0) {
+        setMessage(detail);
+        window.alert(detail);
+      } else {
+        window.alert(detail);
+      }
+      await Promise.all([loadRecalls(recallFilter), loadSmsCredits()]);
+    } catch {
+      setSmsFeedback("Could not send SMS to unsent entries.");
+      window.alert("Could not send SMS to unsent entries.");
     } finally {
       setBulkSmsBusy(false);
     }
@@ -1288,6 +1336,27 @@ export default function AdminPage() {
                     : recallFilter === "all"
                       ? "Pick a campaign to SMS all"
                       : `SMS all on ${recallFilter}`}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary px-4 py-2 text-sm"
+                  disabled={
+                    bulkSmsBusy ||
+                    campaignBusy ||
+                    stats.smsUnsentInView === 0
+                  }
+                  onClick={sendUnsentSms}
+                  title={
+                    recallFilter === "all"
+                      ? "Send SMS to every entry that has not been sent yet"
+                      : `Send SMS to unsent entries on ${recallFilter}`
+                  }
+                >
+                  {bulkSmsBusy
+                    ? "Sending…"
+                    : stats.smsUnsentInView === 0
+                      ? "SMS not sent yet"
+                      : `SMS not sent yet (${stats.smsUnsentInView})`}
                 </button>
                 <button
                   type="button"

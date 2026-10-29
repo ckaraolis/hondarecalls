@@ -10,14 +10,23 @@ import { sendRecallSms } from "@/lib/sms";
 
 export const runtime = "nodejs";
 
-async function sendToRows(rows: Recall[], label: string) {
+async function sendToRows(
+  rows: Recall[],
+  label: string,
+  options?: { unsentOnly?: boolean },
+) {
   let sent = 0;
   let failed = 0;
   let skippedNoPhone = 0;
+  let skippedAlreadySent = 0;
   const failures: { id: number; message: string }[] = [];
   const sentIds: number[] = [];
 
   for (const row of rows) {
+    if (options?.unsentOnly && row.sms_sent) {
+      skippedAlreadySent += 1;
+      continue;
+    }
     if (!row.telephone.trim()) {
       skippedNoPhone += 1;
       continue;
@@ -37,14 +46,19 @@ async function sendToRows(rows: Recall[], label: string) {
     await markSmsSentMany(sentIds);
   }
 
+  const alreadyPart = options?.unsentOnly
+    ? `, already sent ${skippedAlreadySent}`
+    : "";
+
   return {
     ok: sent > 0 && failed === 0,
     total: rows.length,
     sent,
     failed,
     skippedNoPhone,
+    skippedAlreadySent,
     failures: failures.slice(0, 10),
-    message: `Bulk SMS${label}: sent ${sent}, failed ${failed}, skipped ${skippedNoPhone} (no phone).`,
+    message: `Bulk SMS${label}: sent ${sent}, failed ${failed}, skipped ${skippedNoPhone} (no phone)${alreadyPart}.`,
   };
 }
 
@@ -63,6 +77,7 @@ export async function POST(request: NextRequest) {
     : null;
   const recallNo =
     typeof body?.recallNo === "string" ? body.recallNo.trim() : "";
+  const unsentOnly = body?.unsentOnly === true;
 
   if (rawIds) {
     const ids: number[] = [];
@@ -87,28 +102,77 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await sendToRows(rows, ` for ${ids.length} selected`);
+    const target = unsentOnly ? rows.filter((row) => !row.sms_sent) : rows;
+    if (target.length === 0) {
+      return NextResponse.json(
+        {
+          ok: true,
+          sent: 0,
+          failed: 0,
+          skippedNoPhone: 0,
+          skippedAlreadySent: rows.length,
+          message: "No selected entries still need an SMS.",
+        },
+        { status: 200 },
+      );
+    }
+
+    const result = await sendToRows(
+      target,
+      ` for ${target.length} selected`,
+      { unsentOnly },
+    );
     return NextResponse.json({ ...result, ids });
   }
 
-  if (!recallNo || recallNo === "all") {
+  if (!recallNo) {
     return NextResponse.json(
       {
         error:
-          "Select entries with the checkboxes, or pick a specific Recall No. tab before sending bulk SMS.",
+          "Select entries with the checkboxes, or pick a Recall No. / All before sending bulk SMS.",
       },
       { status: 400 },
     );
   }
 
-  const rows = await listRecallsByRecallNo(recallNo);
-  if (rows.length === 0) {
+  if (!unsentOnly && recallNo === "all") {
     return NextResponse.json(
-      { error: "No records found for this Recall No." },
-      { status: 404 },
+      {
+        error:
+          "Select a specific Recall No. tab before sending SMS to all owners, or use SMS not sent yet.",
+      },
+      { status: 400 },
     );
   }
 
-  const result = await sendToRows(rows, ` for ${recallNo}`);
+  const rows = await listRecallsByRecallNo(
+    recallNo === "all" ? "all" : recallNo,
+  );
+  const target = unsentOnly ? rows.filter((row) => !row.sms_sent) : rows;
+
+  if (target.length === 0) {
+    return NextResponse.json(
+      {
+        ok: true,
+        sent: 0,
+        failed: 0,
+        skippedNoPhone: 0,
+        skippedAlreadySent: rows.length,
+        recallNo,
+        message: unsentOnly
+          ? "No entries still need an SMS in this view."
+          : "No records found for this Recall No.",
+      },
+      { status: unsentOnly ? 200 : 404 },
+    );
+  }
+
+  const scopeLabel =
+    recallNo === "all"
+      ? " for all unsent entries"
+      : unsentOnly
+        ? ` for unsent on ${recallNo}`
+        : ` for ${recallNo}`;
+  const result = await sendToRows(target, scopeLabel, { unsentOnly });
   return NextResponse.json({ ...result, recallNo });
 }
