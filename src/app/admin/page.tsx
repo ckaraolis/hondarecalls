@@ -129,7 +129,9 @@ export default function AdminPage() {
   const [tableZoom, setTableZoom] = useState(100);
   const [tableScrollWidth, setTableScrollWidth] = useState(0);
   const tableScrollRef = useRef<HTMLDivElement>(null);
+  const tableInnerRef = useRef<HTMLDivElement>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
+  const bottomScrollRef = useRef<HTMLDivElement>(null);
   const syncingTableScroll = useRef(false);
 
   const canFullAdmin = adminPermissions.includes("full");
@@ -191,32 +193,43 @@ export default function AdminPage() {
   }, [count, groups.length, rows, selectedIds]);
 
   useEffect(() => {
-    const el = tableScrollRef.current;
-    if (!el) return;
+    const scroller = tableScrollRef.current;
+    const inner = tableInnerRef.current;
+    if (!scroller) return;
 
     const updateWidth = () => {
-      setTableScrollWidth(el.scrollWidth);
+      const zoomedWidth = inner
+        ? Math.ceil(inner.getBoundingClientRect().width)
+        : scroller.scrollWidth;
+      setTableScrollWidth(Math.max(scroller.scrollWidth, zoomedWidth));
     };
     updateWidth();
 
     const ro = new ResizeObserver(updateWidth);
-    ro.observe(el);
-    if (el.firstElementChild) ro.observe(el.firstElementChild);
-    return () => ro.disconnect();
+    ro.observe(scroller);
+    if (inner) ro.observe(inner);
+    window.addEventListener("resize", updateWidth);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", updateWidth);
+    };
   }, [filteredRows, tableZoom, rows.length, mainSection]);
 
   function syncTableScroll(
-    source: "top" | "table",
+    source: "top" | "bottom" | "table",
     event: UIEvent<HTMLDivElement>,
   ) {
     if (syncingTableScroll.current) return;
     syncingTableScroll.current = true;
     const left = event.currentTarget.scrollLeft;
-    if (source === "top" && tableScrollRef.current) {
+    if (source !== "table" && tableScrollRef.current) {
       tableScrollRef.current.scrollLeft = left;
     }
-    if (source === "table" && topScrollRef.current) {
+    if (source !== "top" && topScrollRef.current) {
       topScrollRef.current.scrollLeft = left;
+    }
+    if (source !== "bottom" && bottomScrollRef.current) {
+      bottomScrollRef.current.scrollLeft = left;
     }
     syncingTableScroll.current = false;
   }
@@ -1606,16 +1619,18 @@ export default function AdminPage() {
                     </button>
                   </div>
                 ) : (
+              <>
               <div
                 ref={tableScrollRef}
                 className="table-wrap admin-table-scroll"
                 onScroll={(e) => syncTableScroll("table", e)}
               >
                 <div
+                  ref={tableInnerRef}
                   className="admin-table-zoom"
                   style={{ zoom: tableZoom / 100 }}
                 >
-                <table className="data">
+                <table className="data admin-data-table">
                   <thead>
                     <tr>
                       <th className="w-10">
@@ -1906,6 +1921,15 @@ export default function AdminPage() {
                 </table>
                 </div>
               </div>
+              <div
+                ref={bottomScrollRef}
+                className="admin-table-bottom-scroll"
+                onScroll={(e) => syncTableScroll("bottom", e)}
+                aria-label="Scroll table left and right"
+              >
+                <div style={{ width: tableScrollWidth, height: 1 }} />
+              </div>
+              </>
                 )}
               </>
             )}

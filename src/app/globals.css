@@ -134,25 +134,46 @@ a {
   overflow-x: auto;
 }
 
-.admin-table-top-scroll {
-  overflow-x: auto;
+.admin-table-top-scroll,
+.admin-table-bottom-scroll {
+  overflow-x: scroll;
   overflow-y: hidden;
-  height: 14px;
+  background: #f7f9fc;
 }
 
-.admin-table-top-scroll::-webkit-scrollbar {
-  height: 12px;
+.admin-table-top-scroll {
+  height: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-table-bottom-scroll {
+  height: 18px;
+  border-top: 1px solid var(--line);
 }
 
 .admin-table-scroll {
-  max-height: min(70vh, calc(100vh - 240px));
+  max-height: min(70vh, calc(100vh - 260px));
   overflow: auto;
 }
 
-.admin-table-scroll::-webkit-scrollbar,
-.admin-table-top-scroll::-webkit-scrollbar {
-  height: 12px;
+.admin-table-top-scroll::-webkit-scrollbar,
+.admin-table-bottom-scroll::-webkit-scrollbar,
+.admin-table-scroll::-webkit-scrollbar {
+  height: 14px;
   width: 12px;
+}
+
+.admin-table-top-scroll::-webkit-scrollbar-thumb,
+.admin-table-bottom-scroll::-webkit-scrollbar-thumb,
+.admin-table-scroll::-webkit-scrollbar-thumb {
+  background: #9aa7b8;
+  border-radius: 8px;
+}
+
+.admin-table-top-scroll::-webkit-scrollbar-track,
+.admin-table-bottom-scroll::-webkit-scrollbar-track,
+.admin-table-scroll::-webkit-scrollbar-track {
+  background: #e8edf3;
 }
 
 .admin-table-zoom {
@@ -164,6 +185,16 @@ table.data {
   width: 100%;
   border-collapse: collapse;
   min-width: 640px;
+}
+
+table.admin-data-table {
+  width: max-content;
+  min-width: 100%;
+}
+
+table.admin-data-table th,
+table.admin-data-table td {
+  white-space: nowrap;
 }
 
 table.data th,
