@@ -134,6 +134,32 @@ a {
   overflow-x: auto;
 }
 
+.admin-table-top-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 14px;
+}
+
+.admin-table-top-scroll::-webkit-scrollbar {
+  height: 12px;
+}
+
+.admin-table-scroll {
+  max-height: min(70vh, calc(100vh - 240px));
+  overflow: auto;
+}
+
+.admin-table-scroll::-webkit-scrollbar,
+.admin-table-top-scroll::-webkit-scrollbar {
+  height: 12px;
+  width: 12px;
+}
+
+.admin-table-zoom {
+  width: max-content;
+  min-width: 100%;
+}
+
 table.data {
   width: 100%;
   border-collapse: collapse;

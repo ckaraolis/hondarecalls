@@ -1,6 +1,15 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  KeyboardEvent,
+  UIEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 type Recall = {
   id: number;
@@ -116,6 +125,12 @@ export default function AdminPage() {
   const [smsCredits, setSmsCredits] = useState<number | null>(null);
   const [smsCreditsLoading, setSmsCreditsLoading] = useState(false);
   const [smsCreditsError, setSmsCreditsError] = useState<string | null>(null);
+  const [tableSearch, setTableSearch] = useState("");
+  const [tableZoom, setTableZoom] = useState(100);
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const syncingTableScroll = useRef(false);
 
   const canFullAdmin = adminPermissions.includes("full");
   const canCustomSms =
@@ -124,6 +139,31 @@ export default function AdminPage() {
     if (canFullAdmin) return true;
     return tab.id === "custom-sms" && canCustomSms;
   });
+
+  const filteredRows = useMemo(() => {
+    const q = tableSearch.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((row) => {
+      const haystack = [
+        row.reg_no,
+        row.vin_number,
+        row.model,
+        row.recall_no,
+        row.description,
+        row.part_number,
+        row.surname,
+        row.first_name,
+        row.telephone,
+        row.city,
+        row.engine_number,
+        row.registration_date,
+        String(row.id),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [rows, tableSearch]);
 
   const stats = useMemo(() => {
     const done = rows.filter((r) => r.done).length;
@@ -149,6 +189,37 @@ export default function AdminPage() {
       openInView: rows.length - done,
     };
   }, [count, groups.length, rows, selectedIds]);
+
+  useEffect(() => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+
+    const updateWidth = () => {
+      setTableScrollWidth(el.scrollWidth);
+    };
+    updateWidth();
+
+    const ro = new ResizeObserver(updateWidth);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [filteredRows, tableZoom, rows.length, mainSection]);
+
+  function syncTableScroll(
+    source: "top" | "table",
+    event: UIEvent<HTMLDivElement>,
+  ) {
+    if (syncingTableScroll.current) return;
+    syncingTableScroll.current = true;
+    const left = event.currentTarget.scrollLeft;
+    if (source === "top" && tableScrollRef.current) {
+      tableScrollRef.current.scrollLeft = left;
+    }
+    if (source === "table" && topScrollRef.current) {
+      topScrollRef.current.scrollLeft = left;
+    }
+    syncingTableScroll.current = false;
+  }
 
   const loadSmsCredits = useCallback(async () => {
     setSmsCreditsLoading(true);
@@ -376,6 +447,7 @@ export default function AdminPage() {
     setEditingId(null);
     setDraft(null);
     setSelectedIds([]);
+    setTableSearch("");
     await loadRecalls(tab);
   }
 
@@ -386,7 +458,7 @@ export default function AdminPage() {
   }
 
   function toggleSelectAllVisible() {
-    const visibleIds = rows.map((row) => row.id);
+    const visibleIds = filteredRows.map((row) => row.id);
     const allSelected =
       visibleIds.length > 0 &&
       visibleIds.every((id) => selectedIds.includes(id));
@@ -1454,7 +1526,95 @@ export default function AdminPage() {
                 </button>
               </div>
             ) : (
-              <div className="table-wrap">
+              <>
+                <div className="sticky top-0 z-20 border-b border-[var(--line)] bg-white">
+                  <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+                    <label className="sr-only" htmlFor="campaign-table-search">
+                      Search entries
+                    </label>
+                    <input
+                      id="campaign-table-search"
+                      type="search"
+                      className="input min-w-[220px] flex-1 px-3 py-2 text-sm sm:max-w-md"
+                      placeholder="Search reg, VIN, name, phone, city…"
+                      value={tableSearch}
+                      onChange={(e) => setTableSearch(e.target.value)}
+                    />
+                    <p className="text-sm text-[var(--muted)]">
+                      {tableSearch.trim()
+                        ? `${filteredRows.length} of ${rows.length}`
+                        : `${rows.length} entries`}
+                    </p>
+                    <div className="ml-auto flex flex-wrap items-center gap-2">
+                      <span className="text-sm text-[var(--muted)]">Zoom</span>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm px-2"
+                        disabled={tableZoom <= 50}
+                        onClick={() =>
+                          setTableZoom((z) => Math.max(50, z - 10))
+                        }
+                        aria-label="Zoom out"
+                      >
+                        −
+                      </button>
+                      <span className="min-w-[3.5rem] text-center text-sm font-semibold tabular-nums">
+                        {tableZoom}%
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm px-2"
+                        disabled={tableZoom >= 100}
+                        onClick={() =>
+                          setTableZoom((z) => Math.min(100, z + 10))
+                        }
+                        aria-label="Zoom in"
+                      >
+                        +
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={tableZoom === 100}
+                        onClick={() => setTableZoom(100)}
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    ref={topScrollRef}
+                    className="admin-table-top-scroll"
+                    onScroll={(e) => syncTableScroll("top", e)}
+                    aria-hidden="true"
+                  >
+                    <div style={{ width: tableScrollWidth, height: 1 }} />
+                  </div>
+                </div>
+                {filteredRows.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <p className="font-semibold">No matching entries</p>
+                    <p className="mt-1 text-sm text-[var(--muted)]">
+                      Try another search, or clear the search box.
+                    </p>
+                    <button
+                      type="button"
+                      className="btn btn-secondary mt-4 text-sm"
+                      onClick={() => setTableSearch("")}
+                    >
+                      Clear search
+                    </button>
+                  </div>
+                ) : (
+              <div
+                ref={tableScrollRef}
+                className="table-wrap admin-table-scroll"
+                onScroll={(e) => syncTableScroll("table", e)}
+              >
+                <div
+                  className="admin-table-zoom"
+                  style={{ zoom: tableZoom / 100 }}
+                >
                 <table className="data">
                   <thead>
                     <tr>
@@ -1463,8 +1623,10 @@ export default function AdminPage() {
                           type="checkbox"
                           aria-label="Select all visible entries"
                           checked={
-                            rows.length > 0 &&
-                            rows.every((row) => selectedIds.includes(row.id))
+                            filteredRows.length > 0 &&
+                            filteredRows.every((row) =>
+                              selectedIds.includes(row.id),
+                            )
                           }
                           onChange={toggleSelectAllVisible}
                         />
@@ -1487,7 +1649,7 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((row) => {
+                    {filteredRows.map((row) => {
                       const isEditing = editingId === row.id && draft;
                       const busy = rowBusyId === row.id;
                       const selected = selectedIds.includes(row.id);
@@ -1742,7 +1904,10 @@ export default function AdminPage() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
+                )}
+              </>
             )}
           </div>
         </section>
