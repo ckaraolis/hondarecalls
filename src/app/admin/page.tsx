@@ -130,7 +130,6 @@ export default function AdminPage() {
   const [tableScrollWidth, setTableScrollWidth] = useState(0);
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const tableInnerRef = useRef<HTMLDivElement>(null);
-  const topScrollRef = useRef<HTMLDivElement>(null);
   const bottomScrollRef = useRef<HTMLDivElement>(null);
   const syncingTableScroll = useRef(false);
 
@@ -216,7 +215,7 @@ export default function AdminPage() {
   }, [filteredRows, tableZoom, rows.length, mainSection]);
 
   function syncTableScroll(
-    source: "top" | "bottom" | "table",
+    source: "bottom" | "table",
     event: UIEvent<HTMLDivElement>,
   ) {
     if (syncingTableScroll.current) return;
@@ -224,9 +223,6 @@ export default function AdminPage() {
     const left = event.currentTarget.scrollLeft;
     if (source !== "table" && tableScrollRef.current) {
       tableScrollRef.current.scrollLeft = left;
-    }
-    if (source !== "top" && topScrollRef.current) {
-      topScrollRef.current.scrollLeft = left;
     }
     if (source !== "bottom" && bottomScrollRef.current) {
       bottomScrollRef.current.scrollLeft = left;
@@ -1594,14 +1590,6 @@ export default function AdminPage() {
                         Reset
                       </button>
                     </div>
-                  </div>
-                  <div
-                    ref={topScrollRef}
-                    className="admin-table-top-scroll"
-                    onScroll={(e) => syncTableScroll("top", e)}
-                    aria-hidden="true"
-                  >
-                    <div style={{ width: tableScrollWidth, height: 1 }} />
                   </div>
                 </div>
                 {filteredRows.length === 0 ? (

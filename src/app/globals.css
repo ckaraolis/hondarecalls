@@ -134,21 +134,12 @@ a {
   overflow-x: auto;
 }
 
-.admin-table-top-scroll,
 .admin-table-bottom-scroll {
   overflow-x: scroll;
   overflow-y: hidden;
-  background: #f7f9fc;
-}
-
-.admin-table-top-scroll {
-  height: 14px;
-  border-bottom: 1px solid var(--line);
-}
-
-.admin-table-bottom-scroll {
   height: 18px;
   border-top: 1px solid var(--line);
+  background: #f7f9fc;
 }
 
 .admin-table-scroll {
@@ -156,21 +147,22 @@ a {
   overflow: auto;
 }
 
-.admin-table-top-scroll::-webkit-scrollbar,
-.admin-table-bottom-scroll::-webkit-scrollbar,
+/* Keep vertical scrollbar; hide this pane's horizontal one (bottom bar is the only H-scroll). */
 .admin-table-scroll::-webkit-scrollbar {
-  height: 14px;
   width: 12px;
+  height: 0;
 }
 
-.admin-table-top-scroll::-webkit-scrollbar-thumb,
+.admin-table-bottom-scroll::-webkit-scrollbar {
+  height: 14px;
+}
+
 .admin-table-bottom-scroll::-webkit-scrollbar-thumb,
 .admin-table-scroll::-webkit-scrollbar-thumb {
   background: #9aa7b8;
   border-radius: 8px;
 }
 
-.admin-table-top-scroll::-webkit-scrollbar-track,
 .admin-table-bottom-scroll::-webkit-scrollbar-track,
 .admin-table-scroll::-webkit-scrollbar-track {
   background: #e8edf3;
