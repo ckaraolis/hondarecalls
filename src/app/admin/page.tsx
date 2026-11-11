@@ -1362,8 +1362,8 @@ export default function AdminPage() {
             <h2 className="text-xl font-semibold">Upload Excel</h2>
             <p className="mt-1 text-sm text-[var(--muted)]">
               Use the template columns exactly. Re-uploads update matching
-              vehicle + Recall No. rows (including Done). New Recall No. values
-              are added.
+              vehicle + Recall No. rows (including Done and SMS Sent). New
+              Recall No. values are added. Use Yes / No for Done and SMS Sent.
             </p>
           </div>
 
@@ -1374,7 +1374,7 @@ export default function AdminPage() {
             <p className="mt-2 text-sm font-semibold text-[var(--ink)]">
               Reg. No · Vin Number · Model · Recall No. · Description · Part
               Number · Surname · Name · Telephone · City · Done · Registration
-              Date · Engine Number
+              Date · Engine Number · SMS Sent
             </p>
             <a
               href="/templates/honda-recalls-upload-template.xlsx"

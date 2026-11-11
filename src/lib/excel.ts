@@ -15,6 +15,8 @@ export type ExcelRecallRow = {
   done: number;
   registration_date: string;
   engine_number: string;
+  /** Present only when the Excel file includes an SMS Sent column. */
+  sms_sent?: number;
 };
 
 const EXPORT_HEADERS = [
@@ -388,6 +390,21 @@ export function parseRecallsExcel(buffer: Buffer): ExcelRecallRow[] {
       ],
       used,
     ) ?? 12;
+  used.add(engineIdx);
+
+  const smsSentIdx = pickColumn(
+    headers,
+    [
+      "sms sent",
+      "sms_sent",
+      "smssent",
+      "sms status",
+      "sms",
+      "απεσταλμενο sms",
+    ],
+    used,
+  );
+  if (smsSentIdx !== undefined) used.add(smsSentIdx);
 
   const parsed: ExcelRecallRow[] = [];
 
@@ -406,6 +423,8 @@ export function parseRecallsExcel(buffer: Buffer): ExcelRecallRow[] {
     const done = parseYesNo(values[doneIdx]);
     const registration_date = parseDateCell(values[registrationDateIdx]);
     const engine_number = cell(values[engineIdx]);
+    const sms_sent =
+      smsSentIdx !== undefined ? parseYesNo(values[smsSentIdx]) : undefined;
 
     if (!reg_no && !vin_number) continue;
 
@@ -423,6 +442,7 @@ export function parseRecallsExcel(buffer: Buffer): ExcelRecallRow[] {
       done,
       registration_date,
       engine_number,
+      ...(sms_sent !== undefined ? { sms_sent } : {}),
     });
   }
 

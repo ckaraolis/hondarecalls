@@ -369,10 +369,10 @@ export async function searchOpenRecallsForVehicle(input: {
 /**
  * Merge Excel rows into the database.
  * - Inserts when Recall No is new for that vehicle (VIN preferred, else Reg. No)
- * - On same vehicle + Recall No: updates contact/Done fields (no duplicate row)
+ * - On same vehicle + Recall No: updates contact/Done/SMS Sent fields (no duplicate row)
  */
 export async function upsertRecalls(
-  rows: Omit<Recall, "id" | "sms_sent">[],
+  rows: Array<Omit<Recall, "id" | "sms_sent"> & { sms_sent?: number }>,
 ): Promise<UpsertResult> {
   const supabase = getSupabase();
 
@@ -411,6 +411,8 @@ export async function upsertRecalls(
 
     const existingId = existingByKey.get(key);
     const done = item.done ? 1 : 0;
+    const smsSentProvided = typeof item.sms_sent === "number";
+    const sms_sent = item.sms_sent ? 1 : 0;
     const reg_no_norm = normalize(item.reg_no);
     const vin_number_norm = normalize(item.vin_number);
 
@@ -438,6 +440,11 @@ export async function upsertRecalls(
           item.registration_date || String(current.registration_date ?? ""),
         engine_number: item.engine_number || String(current.engine_number ?? ""),
         done,
+        ...(smsSentProvided
+          ? { sms_sent }
+          : {
+              sms_sent: Number(current.sms_sent) ? 1 : 0,
+            }),
         reg_no_norm: normalize(item.reg_no || String(current.reg_no ?? "")),
         vin_number_norm: normalize(
           item.vin_number || String(current.vin_number ?? ""),
@@ -472,7 +479,7 @@ export async function upsertRecalls(
         registration_date: item.registration_date,
         engine_number: item.engine_number,
         done,
-        sms_sent: 0,
+        sms_sent: smsSentProvided ? sms_sent : 0,
       })
       .select(
         "id, reg_no, vin_number, model, recall_no, description, part_number, done",

@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     }
     if (updated > 0) {
       parts.push(
-        `updated ${updated} existing record${updated === 1 ? "" : "s"} (including Done / contact fields)`,
+        `updated ${updated} existing record${updated === 1 ? "" : "s"} (including Done / SMS Sent / contact fields)`,
       );
     }
     if (skipped > 0) {
