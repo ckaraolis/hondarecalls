@@ -100,6 +100,7 @@ export default function AdminPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState<Omit<Recall, "id"> | null>(null);
   const [campaignBusy, setCampaignBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
   const [rowBusyId, setRowBusyId] = useState<number | null>(null);
   const [smsTemplate, setSmsTemplate] = useState("");
   const [smsTemplateSaving, setSmsTemplateSaving] = useState(false);
@@ -126,6 +127,10 @@ export default function AdminPage() {
   const [smsCreditsLoading, setSmsCreditsLoading] = useState(false);
   const [smsCreditsError, setSmsCreditsError] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState("");
+  const [doneFilter, setDoneFilter] = useState<"all" | "yes" | "no">("all");
+  const [smsSentFilter, setSmsSentFilter] = useState<"all" | "yes" | "no">(
+    "all",
+  );
   const [tableZoom, setTableZoom] = useState(100);
   const [tableScrollWidth, setTableScrollWidth] = useState(0);
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -143,8 +148,12 @@ export default function AdminPage() {
 
   const filteredRows = useMemo(() => {
     const q = tableSearch.trim().toLowerCase();
-    if (!q) return rows;
     return rows.filter((row) => {
+      if (doneFilter === "yes" && !row.done) return false;
+      if (doneFilter === "no" && row.done) return false;
+      if (smsSentFilter === "yes" && !row.sms_sent) return false;
+      if (smsSentFilter === "no" && row.sms_sent) return false;
+      if (!q) return true;
       const haystack = [
         row.reg_no,
         row.vin_number,
@@ -164,7 +173,18 @@ export default function AdminPage() {
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [rows, tableSearch]);
+  }, [rows, tableSearch, doneFilter, smsSentFilter]);
+
+  const tableFiltersActive =
+    Boolean(tableSearch.trim()) ||
+    doneFilter !== "all" ||
+    smsSentFilter !== "all";
+
+  function clearTableFilters() {
+    setTableSearch("");
+    setDoneFilter("all");
+    setSmsSentFilter("all");
+  }
 
   const stats = useMemo(() => {
     const done = rows.filter((r) => r.done).length;
@@ -457,6 +477,8 @@ export default function AdminPage() {
     setDraft(null);
     setSelectedIds([]);
     setTableSearch("");
+    setDoneFilter("all");
+    setSmsSentFilter("all");
     await loadRecalls(tab);
   }
 
@@ -619,6 +641,54 @@ export default function AdminPage() {
       setError("Could not delete selected rows.");
     } finally {
       setCampaignBusy(false);
+    }
+  }
+
+  async function exportCampaignExcel() {
+    if (rows.length === 0) {
+      setError("No records to export in this view.");
+      return;
+    }
+
+    setExportBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch(
+        `/api/admin/export?recallNo=${encodeURIComponent(recallFilter)}`,
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        setError(data?.error || "Could not export Excel file.");
+        return;
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const matched = /filename="([^"]+)"/i.exec(disposition);
+      const stamp = new Date().toISOString().slice(0, 10);
+      const fallbackName =
+        recallFilter === "all"
+          ? `honda-recall-all-${stamp}.xlsx`
+          : `honda-recall-${recallFilter}-${stamp}.xlsx`;
+      const filename = matched?.[1] || fallbackName;
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+
+      const scope =
+        recallFilter === "all" ? "all campaigns" : `campaign "${recallFilter}"`;
+      setMessage(`Exported Excel for ${scope} (${rows.length} rows).`);
+    } catch {
+      setError("Could not export Excel file.");
+    } finally {
+      setExportBusy(false);
     }
   }
 
@@ -1367,11 +1437,30 @@ export default function AdminPage() {
               <div>
                 <h2 className="text-xl font-semibold">Recall Campaigns</h2>
                 <p className="mt-1 text-sm text-[var(--muted)]">
-                  Filter by Recall No., tick entries to SMS or delete, edit rows,
-                  or remove a whole campaign.
+                  Filter by Recall No., export Excel, tick entries to SMS or
+                  delete, edit rows, or remove a whole campaign.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary px-4 py-2 text-sm"
+                  disabled={
+                    exportBusy || campaignBusy || bulkSmsBusy || rows.length === 0
+                  }
+                  onClick={exportCampaignExcel}
+                  title={
+                    recallFilter === "all"
+                      ? "Download Excel for all campaigns"
+                      : `Download Excel for campaign ${recallFilter}`
+                  }
+                >
+                  {exportBusy
+                    ? "Exporting…"
+                    : recallFilter === "all"
+                      ? "Export Excel (all)"
+                      : `Export Excel (${recallFilter})`}
+                </button>
                 <button
                   type="button"
                   className="btn btn-primary px-4 py-2 text-sm"
@@ -1549,8 +1638,49 @@ export default function AdminPage() {
                       value={tableSearch}
                       onChange={(e) => setTableSearch(e.target.value)}
                     />
+                    <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
+                      <span>Done</span>
+                      <select
+                        className="input px-2 py-2 text-sm text-[var(--ink)]"
+                        value={doneFilter}
+                        onChange={(e) =>
+                          setDoneFilter(
+                            e.target.value as "all" | "yes" | "no",
+                          )
+                        }
+                      >
+                        <option value="all">All</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
+                      <span>SMS Sent</span>
+                      <select
+                        className="input px-2 py-2 text-sm text-[var(--ink)]"
+                        value={smsSentFilter}
+                        onChange={(e) =>
+                          setSmsSentFilter(
+                            e.target.value as "all" | "yes" | "no",
+                          )
+                        }
+                      >
+                        <option value="all">All</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </label>
+                    {tableFiltersActive && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={clearTableFilters}
+                      >
+                        Clear filters
+                      </button>
+                    )}
                     <p className="text-sm text-[var(--muted)]">
-                      {tableSearch.trim()
+                      {tableFiltersActive
                         ? `${filteredRows.length} of ${rows.length}`
                         : `${rows.length} entries`}
                     </p>
@@ -1596,14 +1726,14 @@ export default function AdminPage() {
                   <div className="p-8 text-center">
                     <p className="font-semibold">No matching entries</p>
                     <p className="mt-1 text-sm text-[var(--muted)]">
-                      Try another search, or clear the search box.
+                      Try another search or filter, or clear the filters.
                     </p>
                     <button
                       type="button"
                       className="btn btn-secondary mt-4 text-sm"
-                      onClick={() => setTableSearch("")}
+                      onClick={clearTableFilters}
                     >
-                      Clear search
+                      Clear filters
                     </button>
                   </div>
                 ) : (

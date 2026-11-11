@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import type { Recall } from "@/lib/db";
 
 export type ExcelRecallRow = {
   reg_no: string;
@@ -15,6 +16,60 @@ export type ExcelRecallRow = {
   registration_date: string;
   engine_number: string;
 };
+
+const EXPORT_HEADERS = [
+  "Reg. No",
+  "Vin Number",
+  "Model",
+  "Recall No.",
+  "Description",
+  "Part Number",
+  "Surname",
+  "Name",
+  "Telephone",
+  "City",
+  "Done",
+  "Reg. Date",
+  "Engine No.",
+  "SMS Sent",
+] as const;
+
+function yesNo(value: number | boolean) {
+  return value ? "Yes" : "No";
+}
+
+/** Build an .xlsx buffer for campaign (or all) recall rows. */
+export function buildRecallsExcelBuffer(rows: Recall[]): Buffer {
+  const sheetRows: (string | number)[][] = [
+    [...EXPORT_HEADERS],
+    ...rows.map((row) => [
+      row.reg_no,
+      row.vin_number,
+      row.model,
+      row.recall_no,
+      row.description,
+      row.part_number,
+      row.surname,
+      row.first_name,
+      row.telephone,
+      row.city,
+      yesNo(row.done),
+      row.registration_date,
+      row.engine_number,
+      yesNo(row.sms_sent),
+    ]),
+  ];
+
+  const sheet = XLSX.utils.aoa_to_sheet(sheetRows);
+  sheet["!cols"] = EXPORT_HEADERS.map((header) => ({
+    wch: Math.max(12, header.length + 2),
+  }));
+
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, sheet, "Recalls");
+  const output = XLSX.write(book, { type: "buffer", bookType: "xlsx" });
+  return Buffer.from(output);
+}
 
 function cell(value: unknown) {
   if (value === null || value === undefined) return "";
